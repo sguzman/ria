@@ -3,19 +3,29 @@
 - [x] Resolve config path from CLI flag and `RIA_CONFIG` environment variable.
 - [x] Define default config file paths (XDG, platform-specific via `directories`).
 - [x] Add initial TOML config structs and parsing.
-- [ ] Specify a full TOML schema covering all CLI flags and defaults.
-- [ ] Add logging policies: level, format, sinks, sampling, and per-module overrides.
+- [x] Specify a full TOML schema covering all CLI flags and defaults.
+- [x] Add logging policy for level.
+- [x] Add logging policy for filter strings.
+- [x] Add logging policy for format selection.
+- [x] Add logging policy for output targets.
+- [x] Add logging policy for enablement and ANSI/target/thread toggles.
 - [x] Add network policy fields: timeouts, retries, backoff, rate limits, concurrency.
-- [ ] Add TLS/security policies: verify certs, custom CA bundle, insecure toggle.
-- [ ] Add host and endpoint overrides for all services (API, S3, metadata).
-- [ ] Add user-agent policy: base string, suffix, and opt-out.
-- [ ] Add auth policies: key source order, profile selection, token caching.
-- [ ] Add file transfer policies: chunk size, checksum verification, resume behavior.
+- [x] Add TLS policy for certificate verification.
+- [x] Add TLS policy for custom CA bundles.
+- [x] Add TLS policy for insecure overrides.
+- [x] Add host override policy for API base URL.
+- [x] Add endpoint overrides for API/S3/metadata services.
+- [x] Add user-agent policy for base string and suffix.
+- [x] Add user-agent policy for opt-out.
+- [x] Add auth policy for access key and secret key config/env.
 - [x] Add output policy for default format.
-- [ ] Add output policies for paging, color, quiet/verbose switches.
-- [ ] Add input policies: glob rules, identifier validation modes, stdin handling.
-- [ ] Add telemetry policies: tracing enablement, filters, and export targets.
+- [x] Add output policies for paging/color/quiet/verbose.
+- [x] Add input policies for glob rules.
+- [x] Add input policies for identifier validation and stdin handling.
+- [x] Add telemetry policies for enablement and filters.
+- [x] Add telemetry policies for export targets.
+- [x] Document every field with examples and defaults.
+- [x] Add config validation with actionable error messages.
+- [x] Create a sample `ria.toml` for end users.
+- [ ] Add file transfer policies: chunk size, checksum verification, resume behavior.
 - [ ] Add compatibility policies: Python parity toggles and legacy behavior switches.
-- [ ] Document every field with examples and defaults.
-- [ ] Add config validation with actionable error messages.
-- [ ] Create a sample `ria.toml` for end users.

@@ -6,7 +6,7 @@ use tracing::info;
 
 use crate::config::{self, ConfigOverrides};
 use crate::errors::{Error, Result};
-use crate::domains;
+use crate::http;
 use crate::telemetry;
 
 #[derive(Debug, Parser)]
@@ -65,25 +65,20 @@ pub fn run() -> Result<()> {
         None
     };
 
-    telemetry::init(log_level)?;
-    info!(?log_level, "telemetry initialized");
-
     let env_path = env::var_os("RIA_CONFIG").map(PathBuf::from);
     let config_path = config::resolve_config_path(cli.config_file.clone());
     let mut config = config::load(config_path.as_deref())?;
 
     let search_paths = config::config_search_paths(cli.config_file.as_deref(), env_path.as_deref());
-    let overrides = ConfigOverrides {
-        logging_level: log_level.map(str::to_string),
-        insecure: cli.insecure.then_some(true),
-        host: cli.host.clone(),
-        user_agent_suffix: cli.user_agent_suffix.clone(),
-        output_format: cli.output.clone(),
-    };
+    config.apply_overrides(config::overrides_from_env());
+    config.apply_overrides(overrides_from_cli(&cli, log_level));
+    config::validate(&config)?;
 
-    config.apply_overrides(overrides);
-    crate::config::validate(&config)?;
+    telemetry::init(&config, log_level)?;
     info!(?search_paths, ?config_path, ?config, "config loaded");
+
+    let http_config = http::config_from_settings(&config);
+    let _http_client = http::HttpClient::new(http_config)?;
 
     match cli.command {
         Some(command) => dispatch(command),
@@ -91,22 +86,50 @@ pub fn run() -> Result<()> {
     }
 }
 
+fn overrides_from_cli(cli: &Cli, log_level: Option<&str>) -> ConfigOverrides {
+    ConfigOverrides {
+        logging_level: log_level.map(str::to_string),
+        insecure: cli.insecure.then_some(true),
+        host: cli.host.clone(),
+        user_agent_suffix: cli.user_agent_suffix.clone(),
+        output_format: cli.output.clone(),
+        ..ConfigOverrides::default()
+    }
+}
+
 fn dispatch(command: Command) -> Result<()> {
     info!(?command, "dispatching command");
     match command {
-        Command::Account => domains::account::handle("account"),
-        Command::Configure => domains::account::handle("configure"),
-        Command::Copy => domains::transfer::handle("copy"),
-        Command::Delete => domains::transfer::handle("delete"),
-        Command::Download => domains::transfer::handle("download"),
-        Command::Flag => domains::account::handle("flag"),
-        Command::List => domains::metadata::handle("list"),
-        Command::Metadata => domains::metadata::handle("metadata"),
-        Command::Move => domains::transfer::handle("move"),
-        Command::Reviews => domains::account::handle("reviews"),
-        Command::Search => domains::metadata::handle("search"),
-        Command::Simplelists => domains::account::handle("simplelists"),
-        Command::Tasks => domains::account::handle("tasks"),
-        Command::Upload => domains::transfer::handle("upload"),
+        Command::Account => crate::domains::account::handle("account"),
+        Command::Configure => crate::domains::account::handle("configure"),
+        Command::Copy => crate::domains::transfer::handle("copy"),
+        Command::Delete => crate::domains::transfer::handle("delete"),
+        Command::Download => crate::domains::transfer::handle("download"),
+        Command::Flag => crate::domains::account::handle("flag"),
+        Command::List => crate::domains::metadata::handle("list"),
+        Command::Metadata => crate::domains::metadata::handle("metadata"),
+        Command::Move => crate::domains::transfer::handle("move"),
+        Command::Reviews => crate::domains::account::handle("reviews"),
+        Command::Search => crate::domains::metadata::handle("search"),
+        Command::Simplelists => crate::domains::account::handle("simplelists"),
+        Command::Tasks => crate::domains::account::handle("tasks"),
+        Command::Upload => crate::domains::transfer::handle("upload"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+
+    #[test]
+    fn parses_output_flag() {
+        let cli = Cli::parse_from(["ria", "--output", "json", "upload"]);
+        assert_eq!(cli.output.as_deref(), Some("json"));
+    }
+
+    #[test]
+    fn parses_config_file_flag() {
+        let cli = Cli::parse_from(["ria", "-c", "ria.toml", "list"]);
+        assert_eq!(cli.config_file.as_deref().unwrap().to_str(), Some("ria.toml"));
     }
 }

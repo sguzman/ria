@@ -1,0 +1,50 @@
+[logging]
+enabled = true
+level = "info"
+filter = "ria=info"
+format = "pretty"
+output = "stdout"
+ansi = true
+target = true
+thread_ids = true
+thread_names = true
+
+[general]
+user_agent_base = "ria/0.1.0"
+user_agent_suffix = "MyApp/1.0"
+user_agent_opt_out = false
+host = "https://archive.org"
+insecure = false
+
+[network]
+timeout_secs = 30
+connect_timeout_secs = 10
+retry_max = 3
+retry_backoff_ms = 250
+rate_limit_per_sec = 10
+concurrency = 4
+
+[tls]
+verify = true
+ca_bundle = "/path/to/ca-bundle.pem"
+
+[endpoints]
+api_base = "https://archive.org"
+s3_base = "https://s3.us.archive.org"
+metadata_base = "https://archive.org/metadata"
+
+[output]
+format = "human"
+paging = false
+color = true
+quiet = false
+verbose = false
+
+[input]
+glob = "*"
+validate_identifiers = true
+read_stdin = true
+
+[auth]
+access_key = "YOUR_ACCESS_KEY"
+secret_key = "YOUR_SECRET_KEY"
