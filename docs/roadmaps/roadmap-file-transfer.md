@@ -30,6 +30,36 @@
 - [x] Add tests for missing explicit file errors.
 - [x] Add tests for empty selection errors.
 - [x] Add tests for download path validation and URL building.
+- [x] Define upload plan struct with metadata and totals.
+- [x] Define upload file struct (source, dest, size).
+- [x] Validate identifiers for upload operations.
+- [x] Error when upload invoked without paths.
+- [x] Load upload metadata sidecar when provided.
+- [x] Support JSON metadata sidecar parsing.
+- [x] Support TOML metadata sidecar parsing.
+- [x] Error on unsupported metadata file extensions.
+- [x] Collect upload files from explicit file paths.
+- [x] Reject glob patterns in upload path arguments.
+- [x] Support directory uploads with recursive file discovery.
+- [x] Preserve relative path structure for directory uploads.
+- [x] Normalize destination separators to forward slashes.
+- [x] Capture file sizes for upload plan totals.
+- [x] Sort upload plan entries deterministically by destination.
+- [x] Detect duplicate upload destinations across inputs.
+- [x] Validate upload destination paths (no absolute/`..`).
+- [x] Emit human upload plan header with dry-run marker.
+- [x] Emit JSON upload plan output.
+- [x] Include total bytes in upload plan output.
+- [x] Include per-file sizes in upload plan output.
+- [x] Include metadata payload in JSON upload plan output.
+- [x] Emit metadata present marker in human output.
+- [x] Add tracing span for upload planning.
+- [x] Add tracing for upload file discovery.
+- [x] Add tests for JSON metadata sidecar parsing.
+- [x] Add tests for TOML metadata sidecar parsing.
+- [x] Add tests for recursive directory upload discovery.
+- [x] Add tests for duplicate destination detection.
+- [x] Add tests for unsupported metadata extension errors.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).

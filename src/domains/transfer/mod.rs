@@ -31,6 +31,21 @@ struct DownloadPlan {
     files: Vec<PlannedFile>,
 }
 
+#[derive(Debug, Clone)]
+struct UploadFile {
+    source: PathBuf,
+    dest: String,
+    size: u64,
+}
+
+#[derive(Debug, Clone)]
+struct UploadPlan {
+    identifier: String,
+    files: Vec<UploadFile>,
+    metadata: Option<Value>,
+    total_bytes: u64,
+}
+
 #[instrument(skip(ctx))]
 pub fn download(ctx: &AppContext, args: &DownloadArgs) -> Result<()> {
     let plan = plan_download(ctx, args)?;
@@ -42,9 +57,16 @@ pub fn download(ctx: &AppContext, args: &DownloadArgs) -> Result<()> {
 }
 
 #[instrument(skip(ctx))]
-pub fn upload(ctx: &AppContext, _args: &UploadArgs) -> Result<()> {
+pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
+    let plan = plan_upload(ctx, args)?;
+    emit_upload_plan(ctx, &plan, args.dry_run)?;
+    if args.dry_run {
+        return Ok(());
+    }
     warn!("upload not implemented");
-    let _ = ctx.output.write_error("ria: upload not implemented");
+    let _ = ctx
+        .output
+        .write_error("ria: upload not implemented (use --dry-run to preview)");
     Err(Error::not_implemented("upload"))
 }
 
@@ -194,6 +216,251 @@ fn emit_plan(ctx: &AppContext, plan: &DownloadPlan, dry_run: bool) -> Result<()>
     }
 }
 
+#[instrument(skip(ctx, args))]
+fn plan_upload(ctx: &AppContext, args: &UploadArgs) -> Result<UploadPlan> {
+    validate_identifier(ctx, &args.identifier)?;
+    if args.paths.is_empty() {
+        return Err(Error::message("no upload paths provided"));
+    }
+
+    let files = collect_upload_files(&args.paths)?;
+    if files.is_empty() {
+        return Err(Error::message("no upload files discovered"));
+    }
+
+    let metadata = match args.metadata.as_ref() {
+        Some(path) => Some(load_metadata_sidecar(path)?),
+        None => None,
+    };
+
+    let total_bytes = files.iter().map(|file| file.size).sum();
+    Ok(UploadPlan {
+        identifier: args.identifier.clone(),
+        files,
+        metadata,
+        total_bytes,
+    })
+}
+
+#[instrument(skip(ctx, plan))]
+fn emit_upload_plan(ctx: &AppContext, plan: &UploadPlan, dry_run: bool) -> Result<()> {
+    match ctx.output.policy().format {
+        OutputFormat::Json => {
+            let files = plan
+                .files
+                .iter()
+                .map(|file| {
+                    json!({
+                        "source": file.source.display().to_string(),
+                        "dest": file.dest,
+                        "size": file.size,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let value = json!({
+                "identifier": plan.identifier,
+                "dry_run": dry_run,
+                "total_bytes": plan.total_bytes,
+                "files": files,
+                "metadata": plan.metadata,
+            });
+            ctx.output
+                .write_json(&value)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))
+        }
+        _ => {
+            let header = if dry_run {
+                format!("Upload plan for {} (dry-run)", plan.identifier)
+            } else {
+                format!("Uploading {}", plan.identifier)
+            };
+            ctx.output
+                .write_line(&header)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            ctx.output
+                .write_line(&format!(
+                    "Files: {} ({} bytes)",
+                    plan.files.len(),
+                    plan.total_bytes
+                ))
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            for file in &plan.files {
+                ctx.output
+                    .write_line(&format!(
+                        "{} -> {} ({} bytes)",
+                        file.source.display(),
+                        file.dest,
+                        file.size
+                    ))
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            if plan.metadata.is_some() {
+                ctx.output
+                    .write_line("Metadata: provided")
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[instrument]
+fn collect_upload_files(paths: &[PathBuf]) -> Result<Vec<UploadFile>> {
+    let mut files = Vec::new();
+    let mut seen = HashSet::new();
+    for path in paths {
+        if contains_glob_pattern(path) {
+            return Err(Error::message(format!(
+                "glob patterns are not supported in upload paths: {}",
+                path.display()
+            )));
+        }
+        let metadata = fs::metadata(path).map_err(|err| {
+            Error::message(format!("failed to read {}: {err}", path.display()))
+        })?;
+        if metadata.is_dir() {
+            collect_dir_files(path, path, &mut files, &mut seen)?;
+        } else if metadata.is_file() {
+            let dest = file_name_string(path)?;
+            validate_upload_dest(&dest)?;
+            if !seen.insert(dest.clone()) {
+                return Err(Error::message(format!(
+                    "duplicate upload destination: {dest}"
+                )));
+            }
+            files.push(UploadFile {
+                source: path.clone(),
+                dest,
+                size: metadata.len(),
+            });
+        } else {
+            return Err(Error::message(format!(
+                "unsupported upload path type: {}",
+                path.display()
+            )));
+        }
+    }
+
+    files.sort_by(|a, b| a.dest.cmp(&b.dest));
+    Ok(files)
+}
+
+fn collect_dir_files(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<UploadFile>,
+    seen: &mut HashSet<String>,
+) -> Result<()> {
+    for entry in fs::read_dir(dir)
+        .map_err(|err| Error::message(format!("failed to read {}: {err}", dir.display())))?
+    {
+        let entry = entry
+            .map_err(|err| Error::message(format!("failed to read {}: {err}", dir.display())))?;
+        let path = entry.path();
+        let metadata = entry.metadata().map_err(|err| {
+            Error::message(format!("failed to read {}: {err}", path.display()))
+        })?;
+        if metadata.is_dir() {
+            collect_dir_files(root, &path, files, seen)?;
+        } else if metadata.is_file() {
+            let dest = relative_dest(root, &path)?;
+            validate_upload_dest(&dest)?;
+            if !seen.insert(dest.clone()) {
+                return Err(Error::message(format!(
+                    "duplicate upload destination: {dest}"
+                )));
+            }
+            files.push(UploadFile {
+                source: path,
+                dest,
+                size: metadata.len(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn relative_dest(root: &Path, path: &Path) -> Result<String> {
+    let rel = path.strip_prefix(root).map_err(|_| {
+        Error::message(format!(
+            "failed to compute upload path for {}",
+            path.display()
+        ))
+    })?;
+    let dest = rel
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string();
+    if dest.is_empty() {
+        return Err(Error::message("empty upload destination path"));
+    }
+    Ok(dest)
+}
+
+fn file_name_string(path: &Path) -> Result<String> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
+        .ok_or_else(|| {
+            Error::message(format!(
+                "invalid upload file name: {}",
+                path.display()
+            ))
+        })
+}
+
+fn validate_upload_dest(dest: &str) -> Result<()> {
+    let path = Path::new(dest);
+    if path.is_absolute() {
+        return Err(Error::message(format!(
+            "refusing to upload absolute destination path: {dest}"
+        )));
+    }
+    for component in path.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(Error::message(format!(
+                "refusing to upload destination with parent traversal: {dest}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn load_metadata_sidecar(path: &Path) -> Result<Value> {
+    let contents = fs::read_to_string(path).map_err(|err| {
+        Error::message(format!(
+            "failed to read metadata file {}: {err}",
+            path.display()
+        ))
+    })?;
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "json" => serde_json::from_str(&contents)
+            .map_err(|err| Error::message(format!("invalid JSON metadata: {err}"))),
+        "toml" => {
+            let value: toml::Value = toml::from_str(&contents)
+                .map_err(|err| Error::message(format!("invalid TOML metadata: {err}")))?;
+            serde_json::to_value(value)
+                .map_err(|err| Error::message(format!("invalid TOML metadata: {err}")))
+        }
+        _ => Err(Error::message(format!(
+            "unsupported metadata file extension: {}",
+            path.display()
+        ))),
+    }
+}
+
+fn contains_glob_pattern(path: &Path) -> bool {
+    path.to_string_lossy()
+        .chars()
+        .any(|ch| matches!(ch, '*' | '?' | '[' | ']'))
+}
+
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
     let validate = ctx
         .config
@@ -326,6 +593,7 @@ fn build_file_url(base: &str, identifier: &str, name: &str) -> Result<String> {
 mod tests {
     use super::*;
     use crate::config::Config;
+    use tempfile::TempDir;
 
     fn sample_metadata() -> Value {
         json!({
@@ -449,5 +717,60 @@ mod tests {
             url,
             "https://s3.us.archive.org/sample-item/nested/file.txt"
         );
+    }
+
+    #[test]
+    fn loads_json_metadata_sidecar() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("metadata.json");
+        fs::write(&path, r#"{ "title": "Example" }"#).expect("write");
+        let value = load_metadata_sidecar(&path).expect("metadata");
+        assert_eq!(value.get("title").and_then(|v| v.as_str()), Some("Example"));
+    }
+
+    #[test]
+    fn loads_toml_metadata_sidecar() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("metadata.toml");
+        fs::write(&path, "title = \"Example\"\n").expect("write");
+        let value = load_metadata_sidecar(&path).expect("metadata");
+        assert_eq!(value.get("title").and_then(|v| v.as_str()), Some("Example"));
+    }
+
+    #[test]
+    fn collects_upload_files_from_directory() {
+        let dir = TempDir::new().expect("temp dir");
+        let root = dir.path();
+        fs::create_dir_all(root.join("nested")).expect("mkdir");
+        fs::write(root.join("file.txt"), "data").expect("write");
+        fs::write(root.join("nested/file2.txt"), "more").expect("write");
+
+        let files = collect_upload_files(&[root.to_path_buf()]).expect("files");
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|file| file.dest == "file.txt"));
+        assert!(files.iter().any(|file| file.dest == "nested/file2.txt"));
+    }
+
+    #[test]
+    fn errors_on_duplicate_upload_dest() {
+        let dir = TempDir::new().expect("temp dir");
+        let first = dir.path().join("first.txt");
+        let second_dir = dir.path().join("other");
+        fs::create_dir_all(&second_dir).expect("mkdir");
+        let second = second_dir.join("first.txt");
+        fs::write(&first, "data").expect("write");
+        fs::write(&second, "data").expect("write");
+
+        let err = collect_upload_files(&[first, second]).unwrap_err();
+        assert!(err.to_string().contains("duplicate upload destination"));
+    }
+
+    #[test]
+    fn errors_on_unknown_metadata_extension() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("metadata.txt");
+        fs::write(&path, "title=Example").expect("write");
+        let err = load_metadata_sidecar(&path).unwrap_err();
+        assert!(err.to_string().contains("unsupported metadata file extension"));
     }
 }
