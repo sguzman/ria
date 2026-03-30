@@ -11,4 +11,4 @@
 - [x] Confirm upload/delete/copy/move require auth and fail gracefully without it.
 - [x] Check that metadata updates work in `--dry-run` mode.
 - [x] Review `docs/parity.md` for any outdated notes.
-- [ ] Tag release notes with date and version.
+- [x] Tag release notes with date and version.
