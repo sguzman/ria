@@ -110,6 +110,8 @@ pub struct DeleteArgs {
     pub files: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
+    #[arg(long = "cascade")]
+    pub cascade: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }

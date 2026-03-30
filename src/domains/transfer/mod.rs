@@ -42,6 +42,7 @@ struct DownloadPlan {
 struct DeletePlan {
     identifier: String,
     files: Vec<TransferFile>,
+    cascade: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -107,16 +108,13 @@ pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
 
 #[instrument(skip(ctx))]
 pub fn delete(ctx: &AppContext, _args: &DeleteArgs) -> Result<()> {
+    let policy = TransferPolicy::from_config(ctx);
     let plan = plan_delete(ctx, _args)?;
-    emit_delete_plan(ctx, &plan, _args.dry_run)?;
+    emit_delete_plan(ctx, &plan, _args.dry_run, policy)?;
     if _args.dry_run {
         return Ok(());
     }
-    warn!("delete not implemented");
-    let _ = ctx
-        .output
-        .write_error("ria: delete not implemented (use --dry-run to preview)");
-    Err(Error::not_implemented("delete"))
+    execute_delete(ctx, &plan, policy)
 }
 
 #[instrument(skip(ctx))]
@@ -339,11 +337,17 @@ fn plan_delete(ctx: &AppContext, args: &DeleteArgs) -> Result<DeletePlan> {
     Ok(DeletePlan {
         identifier: args.identifier.clone(),
         files: selection,
+        cascade: args.cascade,
     })
 }
 
 #[instrument(skip(ctx, plan))]
-fn emit_delete_plan(ctx: &AppContext, plan: &DeletePlan, dry_run: bool) -> Result<()> {
+fn emit_delete_plan(
+    ctx: &AppContext,
+    plan: &DeletePlan,
+    dry_run: bool,
+    policy: TransferPolicy,
+) -> Result<()> {
     match ctx.output.policy().format {
         OutputFormat::Json => {
             let files = plan
@@ -359,6 +363,10 @@ fn emit_delete_plan(ctx: &AppContext, plan: &DeletePlan, dry_run: bool) -> Resul
             let value = json!({
                 "identifier": plan.identifier,
                 "dry_run": dry_run,
+                "cascade": plan.cascade,
+                "resume": policy.resume,
+                "checksum_verify": policy.checksum_verify,
+                "chunk_size_bytes": policy.chunk_size_bytes,
                 "files": files,
             });
             ctx.output
@@ -377,6 +385,11 @@ fn emit_delete_plan(ctx: &AppContext, plan: &DeletePlan, dry_run: bool) -> Resul
             for file in &plan.files {
                 ctx.output
                     .write_line(&file.name)
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            if plan.cascade {
+                ctx.output
+                    .write_line("Cascade delete: enabled")
                     .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
             }
             Ok(())
@@ -973,10 +986,11 @@ fn compute_hashes_from_path(path: &Path) -> Result<(String, String)> {
 }
 
 fn execute_upload(ctx: &AppContext, plan: &UploadPlan, policy: TransferPolicy) -> Result<()> {
+    let auth = build_low_auth_header(&ctx.config)?;
     let mut progress = UploadProgress::new(plan.total_bytes, plan.total_files);
     for file in &plan.files {
         let url = build_upload_url(ctx.http.s3_base(), &plan.identifier, &file.dest)?;
-        let headers = build_upload_headers(&file.md5, &file.sha1, policy, &ctx.config)?;
+        let headers = build_upload_headers(&file.md5, &file.sha1, policy, &auth)?;
         info!(
             file = %file.dest,
             url = %url,
@@ -1028,30 +1042,24 @@ fn build_upload_headers(
     md5: &str,
     sha1: &str,
     policy: TransferPolicy,
-    config: &crate::config::Config,
+    auth_header: &str,
 ) -> Result<Vec<(String, String)>> {
-    let access = config
-        .auth
-        .as_ref()
-        .and_then(|auth| auth.access_key.as_deref())
-        .ok_or_else(|| Error::message("missing access key for upload"))?;
-    let secret = config
-        .auth
-        .as_ref()
-        .and_then(|auth| auth.secret_key.as_deref())
-        .ok_or_else(|| Error::message("missing secret key for upload"))?;
-
     let mut headers = Vec::new();
     headers.push(("Content-MD5".to_string(), md5.to_string()));
     headers.push(("X-Archive-SHA1".to_string(), sha1.to_string()));
-    headers.push(("X-Archive-User".to_string(), access.to_string()));
-    headers.push(("X-Archive-Secret".to_string(), secret.to_string()));
-    if policy.chunk_size_bytes.is_some() {
-        headers.push((
-            "X-Archive-Queue-Derive".to_string(),
-            "0".to_string(),
-        ));
-    }
+    headers.push(("Authorization".to_string(), auth_header.to_string()));
+    headers.push((
+        "x-archive-auto-make-bucket".to_string(),
+        "1".to_string(),
+    ));
+    headers.push((
+        "x-archive-queue-derive".to_string(),
+        if policy.chunk_size_bytes.is_some() {
+            "0".to_string()
+        } else {
+            "1".to_string()
+        },
+    ));
     Ok(headers)
 }
 
@@ -1061,6 +1069,43 @@ struct UploadProgress {
     total_files: usize,
     completed_files: usize,
     completed_bytes: u64,
+}
+
+fn execute_delete(ctx: &AppContext, plan: &DeletePlan, _policy: TransferPolicy) -> Result<()> {
+    let auth = build_low_auth_header(&ctx.config)?;
+    for file in &plan.files {
+        let url = build_file_url(ctx.http.s3_base(), &plan.identifier, &file.name)?;
+        let headers = build_delete_headers(&auth, plan.cascade);
+        info!(file = %file.name, url = %url, "deleting file");
+        ctx.http
+            .delete(&url, &headers)
+            .map_err(|err| Error::message(format!("delete failed for {}: {err}", file.name)))?;
+    }
+    Ok(())
+}
+
+fn build_delete_headers(auth_header: &str, cascade: bool) -> Vec<(String, String)> {
+    let mut headers = Vec::new();
+    headers.push(("Authorization".to_string(), auth_header.to_string()));
+    headers.push((
+        "x-archive-cascade-delete".to_string(),
+        if cascade { "1" } else { "0" }.to_string(),
+    ));
+    headers
+}
+
+fn build_low_auth_header(config: &crate::config::Config) -> Result<String> {
+    let access = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.access_key.as_deref())
+        .ok_or_else(|| Error::message("missing access key for S3 auth"))?;
+    let secret = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.secret_key.as_deref())
+        .ok_or_else(|| Error::message("missing secret key for S3 auth"))?;
+    Ok(format!("LOW {access}:{secret}"))
 }
 
 impl UploadProgress {
@@ -1387,6 +1432,7 @@ mod tests {
             identifier: "example".into(),
             files: Vec::new(),
             glob: None,
+            cascade: false,
             dry_run: true,
         };
         let metadata = sample_metadata();
@@ -1536,5 +1582,26 @@ mod tests {
         let (md5, sha1) = compute_hashes_from_path(&path).expect("hashes");
         assert_eq!(md5, "098f6bcd4621d373cade4e832627b4f6");
         assert_eq!(sha1, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
+    }
+
+    #[test]
+    fn builds_low_auth_header() {
+        let config = crate::config::Config {
+            auth: Some(crate::config::AuthConfig {
+                access_key: Some("access".into()),
+                secret_key: Some("secret".into()),
+            }),
+            ..crate::config::Config::default()
+        };
+        let header = build_low_auth_header(&config).expect("auth");
+        assert_eq!(header, "LOW access:secret");
+    }
+
+    #[test]
+    fn build_delete_headers_sets_cascade() {
+        let headers = build_delete_headers("LOW access:secret", true);
+        assert!(headers
+            .iter()
+            .any(|(key, value)| key == "x-archive-cascade-delete" && value == "1"));
     }
 }

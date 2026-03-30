@@ -179,6 +179,35 @@
 - [x] Add upload elapsed time reporting.
 - [x] Add upload rate calculation for verbose output.
 - [x] Add upload summary output when complete.
+- [x] Add cascade flag to delete CLI arguments.
+- [x] Include cascade flag in delete plan output.
+- [x] Add LOW auth header helper for IA-S3 requests.
+- [x] Require access/secret keys for LOW auth header.
+- [x] Use LOW auth header for upload execution.
+- [x] Use LOW auth header for delete execution.
+- [x] Add HTTP DELETE helper for file removal requests.
+- [x] Implement delete execution with S3 DELETE requests.
+- [x] Add delete headers helper with cascade setting.
+- [x] Emit cascade delete status in human output.
+- [x] Include cascade flag in delete JSON output.
+- [x] Add tests for LOW auth header formatting.
+- [x] Add tests for delete header cascade values.
+- [x] Surface delete failures as structured errors.
+- [x] Add tracing fields for delete execution.
+- [x] Add upload headers for auto-make-bucket.
+- [x] Add upload headers for queue-derive toggle.
+- [x] Remove plaintext key headers from upload requests.
+- [x] Add checksum fields to upload plan JSON output.
+- [x] Add checksum fields to upload plan human output.
+- [x] Add transfer policy to delete plan JSON output.
+- [x] Wire delete execution to dry-run gating.
+- [x] Add delete URL building via S3 base helper.
+- [x] Add upload auth header builder with LOW scheme.
+- [x] Add error when upload auth header cannot be built.
+- [x] Add error when delete auth header cannot be built.
+- [x] Add helper for LOW auth header reuse across operations.
+- [x] Update delete plan to persist cascade flag.
+- [x] Add delete operation summary logs per file.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
