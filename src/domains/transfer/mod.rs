@@ -19,6 +19,7 @@ struct TransferFile {
     size: Option<u64>,
     md5: Option<String>,
     sha1: Option<String>,
+    formats: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +152,12 @@ fn plan_download(ctx: &AppContext, args: &DownloadArgs) -> Result<DownloadPlan> 
         .collect::<HashMap<_, _>>();
 
     let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    let selection = filter_by_format(
+        selection,
+        &args.formats,
+        &args.files,
+        args.glob.as_deref(),
+    )?;
     let mut planned = Vec::with_capacity(selection.len());
     for file in selection {
         validate_download_path(&file.name)?;
@@ -328,6 +335,12 @@ fn plan_delete(ctx: &AppContext, args: &DeleteArgs) -> Result<DeletePlan> {
         .map(|file| (file.name.clone(), file))
         .collect::<HashMap<_, _>>();
     let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    let selection = filter_by_format(
+        selection,
+        &args.formats,
+        &args.files,
+        args.glob.as_deref(),
+    )?;
     Ok(DeletePlan {
         identifier: args.identifier.clone(),
         files: selection,
@@ -403,6 +416,12 @@ fn plan_copy(ctx: &AppContext, args: &CopyArgs) -> Result<CopyPlan> {
         .map(|file| (file.name.clone(), file))
         .collect::<HashMap<_, _>>();
     let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    let selection = filter_by_format(
+        selection,
+        &args.formats,
+        &args.files,
+        args.glob.as_deref(),
+    )?;
     Ok(CopyPlan {
         source_identifier: args.source_identifier.clone(),
         dest_identifier: args.dest_identifier.clone(),
@@ -471,6 +490,12 @@ fn plan_move(ctx: &AppContext, args: &MoveArgs) -> Result<MovePlan> {
         .map(|file| (file.name.clone(), file))
         .collect::<HashMap<_, _>>();
     let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    let selection = filter_by_format(
+        selection,
+        &args.formats,
+        &args.files,
+        args.glob.as_deref(),
+    )?;
     Ok(MovePlan {
         source_identifier: args.source_identifier.clone(),
         dest_identifier: args.dest_identifier.clone(),
@@ -1309,17 +1334,96 @@ fn parse_metadata_files(metadata: &Value) -> Result<Vec<TransferFile>> {
             .get("sha1")
             .and_then(|value| value.as_str())
             .map(str::to_string);
-        results.push(TransferFile {
-            name,
-            size,
-            md5,
-            sha1,
-        });
+    let formats = parse_formats(file);
+    results.push(TransferFile {
+        name,
+        size,
+        md5,
+        sha1,
+        formats,
+    });
     }
     if results.is_empty() {
         return Err(Error::message("metadata response contained no files"));
     }
     Ok(results)
+}
+
+fn parse_formats(file: &Value) -> Vec<String> {
+    let mut formats = Vec::new();
+    match file.get("format") {
+        Some(Value::String(value)) => {
+            let value = value.trim();
+            if !value.is_empty() {
+                formats.push(value.to_string());
+            }
+        }
+        Some(Value::Array(values)) => {
+            for value in values {
+                if let Some(value) = value.as_str() {
+                    let value = value.trim();
+                    if !value.is_empty() {
+                        formats.push(value.to_string());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    formats
+}
+
+fn filter_by_format(
+    files: Vec<TransferFile>,
+    formats: &[String],
+    explicit_files: &[String],
+    glob: Option<&str>,
+) -> Result<Vec<TransferFile>> {
+    if formats.is_empty() {
+        return Ok(files);
+    }
+
+    let mut filtered = Vec::new();
+    for file in files {
+        if format_matches(&file, formats) {
+            filtered.push(file);
+        } else if explicit_files
+            .iter()
+            .any(|name| name == &file.name)
+        {
+            return Err(Error::message(format!(
+                "requested file does not match format filter: {}",
+                file.name
+            )));
+        }
+    }
+
+    if filtered.is_empty() {
+        let hint = if let Some(pattern) = glob {
+            format!(" for glob '{pattern}'")
+        } else {
+            String::new()
+        };
+        return Err(Error::message(format!(
+            "no files matched format filters{hint}"
+        )));
+    }
+
+    Ok(filtered)
+}
+
+fn format_matches(file: &TransferFile, formats: &[String]) -> bool {
+    if formats.is_empty() {
+        return true;
+    }
+    for format in &file.formats {
+        for wanted in formats {
+            if format.eq_ignore_ascii_case(wanted) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn select_files(
@@ -1411,9 +1515,9 @@ mod tests {
     fn sample_metadata() -> Value {
         json!({
             "files": [
-                { "name": "file-one.txt", "size": "12", "md5": "098f6bcd4621d373cade4e832627b4f6" },
-                { "name": "nested/file-two.txt", "size": "24", "sha1": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3" },
-                { "name": "image.jpg" }
+                { "name": "file-one.txt", "size": "12", "md5": "098f6bcd4621d373cade4e832627b4f6", "format": "Text" },
+                { "name": "nested/file-two.txt", "size": "24", "sha1": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3", "format": ["Text", "Source"] },
+                { "name": "image.jpg", "format": "JPEG" }
             ]
         })
     }
@@ -1443,6 +1547,8 @@ mod tests {
             Some("098f6bcd4621d373cade4e832627b4f6")
         );
         assert_eq!(files[1].sha1.as_deref(), Some("a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"));
+        assert!(files[0].formats.iter().any(|fmt| fmt == "Text"));
+        assert!(files[1].formats.iter().any(|fmt| fmt == "Source"));
     }
 
     #[test]
@@ -1455,11 +1561,13 @@ mod tests {
         let args = DownloadArgs {
             identifier: "example".into(),
             files: Vec::new(),
+            formats: Vec::new(),
             glob: Some("*.txt".into()),
             dest: PathBuf::from("."),
             dry_run: true,
         };
-        let selected = select_files(&ctx, &args, &available).expect("selected");
+        let selected =
+            select_files(&ctx, &args.files, args.glob.as_deref(), &available).expect("selected");
         assert_eq!(selected.len(), 2);
     }
 
@@ -1473,11 +1581,13 @@ mod tests {
         let args = DownloadArgs {
             identifier: "example".into(),
             files: vec!["image.jpg".into()],
+            formats: Vec::new(),
             glob: None,
             dest: PathBuf::from("."),
             dry_run: true,
         };
-        let selected = select_files(&ctx, &args, &available).expect("selected");
+        let selected =
+            select_files(&ctx, &args.files, args.glob.as_deref(), &available).expect("selected");
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].name, "image.jpg");
     }
@@ -1492,11 +1602,12 @@ mod tests {
         let args = DownloadArgs {
             identifier: "example".into(),
             files: vec!["missing.txt".into()],
+            formats: Vec::new(),
             glob: None,
             dest: PathBuf::from("."),
             dry_run: true,
         };
-        let err = select_files(&ctx, &args, &available).unwrap_err();
+        let err = select_files(&ctx, &args.files, args.glob.as_deref(), &available).unwrap_err();
         assert!(err.to_string().contains("requested file not found"));
     }
 
@@ -1510,11 +1621,12 @@ mod tests {
         let args = DownloadArgs {
             identifier: "example".into(),
             files: Vec::new(),
+            formats: vec!["Text".into()],
             glob: Some("*.pdf".into()),
             dest: PathBuf::from("."),
             dry_run: true,
         };
-        let err = select_files(&ctx, &args, &available).unwrap_err();
+        let err = select_files(&ctx, &args.files, args.glob.as_deref(), &available).unwrap_err();
         assert!(err.to_string().contains("no files matched"));
     }
 
@@ -1550,6 +1662,7 @@ mod tests {
         let args = DeleteArgs {
             identifier: "example".into(),
             files: Vec::new(),
+            formats: Vec::new(),
             glob: None,
             cascade: false,
             dry_run: true,
@@ -1730,5 +1843,28 @@ mod tests {
         progress.on_complete();
         let line = progress.format_line("file.txt");
         assert!(line.contains("files: 1/2"));
+    }
+
+    #[test]
+    fn filters_by_format() {
+        let ctx = test_context();
+        let available = parse_metadata_files(&sample_metadata()).expect("files");
+        let filtered = filter_by_format(available, &["JPEG".into()], &[], None).expect("filtered");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "image.jpg");
+    }
+
+    #[test]
+    fn errors_on_format_mismatch_for_explicit_file() {
+        let ctx = test_context();
+        let available = parse_metadata_files(&sample_metadata()).expect("files");
+        let err = filter_by_format(
+            available,
+            &["JPEG".into()],
+            &["file-one.txt".into()],
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("does not match format"));
     }
 }

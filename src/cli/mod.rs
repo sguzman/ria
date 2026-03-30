@@ -84,6 +84,8 @@ pub struct DownloadArgs {
     pub identifier: String,
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
+    #[arg(long = "format", value_name = "FORMAT")]
+    pub formats: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
     #[arg(long = "dest", value_name = "DIR", default_value = ".")]
@@ -108,6 +110,8 @@ pub struct DeleteArgs {
     pub identifier: String,
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
+    #[arg(long = "format", value_name = "FORMAT")]
+    pub formats: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
     #[arg(long = "cascade")]
@@ -122,6 +126,8 @@ pub struct CopyArgs {
     pub dest_identifier: String,
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
+    #[arg(long = "format", value_name = "FORMAT")]
+    pub formats: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
     #[arg(long = "dry-run")]
@@ -134,6 +140,8 @@ pub struct MoveArgs {
     pub dest_identifier: String,
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
+    #[arg(long = "format", value_name = "FORMAT")]
+    pub formats: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
     #[arg(long = "dry-run")]

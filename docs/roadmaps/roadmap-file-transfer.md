@@ -238,6 +238,36 @@
 - [x] Add helper to compute checksums for in-memory copy.
 - [x] Gate checksum verification on config policy for copy.
 - [x] Gate checksum verification on config policy for move.
+- [x] Add `--format` filter to download CLI args.
+- [x] Add `--format` filter to delete CLI args.
+- [x] Add `--format` filter to copy CLI args.
+- [x] Add `--format` filter to move CLI args.
+- [x] Parse single string format from metadata files.
+- [x] Parse list format values from metadata files.
+- [x] Store formats list on transfer file model.
+- [x] Add format filter helper for transfer selection.
+- [x] Apply format filters to download selection.
+- [x] Apply format filters to delete selection.
+- [x] Apply format filters to copy selection.
+- [x] Apply format filters to move selection.
+- [x] Treat format matching as case-insensitive.
+- [x] Error when explicit file does not match format filter.
+- [x] Error when no files match format filters.
+- [x] Include glob context in format filter error messaging.
+- [x] Keep format filtering a no-op when no formats provided.
+- [x] Add format matching helper for transfer files.
+- [x] Add format fixtures to sample metadata test data.
+- [x] Add tests for format parsing from metadata.
+- [x] Add tests for format filtering success.
+- [x] Add tests for format mismatch errors.
+- [x] Update download selection tests for new format args.
+- [x] Update delete selection tests for new format args.
+- [x] Add format filtering for explicit file selection.
+- [x] Add format filtering for glob selection.
+- [x] Add format filtering for combined selections.
+- [x] Propagate parsed formats into transfer file list.
+- [x] Add format parsing helper function.
+- [x] Ensure format filtering respects metadata-derived formats.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
