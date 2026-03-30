@@ -1014,6 +1014,14 @@ fn execute_upload(ctx: &AppContext, plan: &UploadPlan, policy: TransferPolicy) -
     for file in &plan.files {
         let url = build_upload_url(ctx.http.s3_base(), &plan.identifier, &file.dest)?;
         let headers = build_upload_headers(&file.md5, &file.sha1, policy, &auth)?;
+        if should_skip_upload(ctx, &url, file.size, policy.resume, &auth)? {
+            progress.on_skip(file.size);
+            if ctx.output.policy().verbose {
+                let line = progress.format_line(&file.dest, std::time::Duration::from_secs(0));
+                let _ = ctx.output.write_line(&line);
+            }
+            continue;
+        }
         info!(
             file = %file.dest,
             url = %url,
@@ -1092,6 +1100,7 @@ struct UploadProgress {
     total_files: usize,
     completed_files: usize,
     completed_bytes: u64,
+    skipped_files: usize,
 }
 
 fn execute_delete(ctx: &AppContext, plan: &DeletePlan, _policy: TransferPolicy) -> Result<()> {
@@ -1138,6 +1147,7 @@ impl UploadProgress {
             total_files,
             completed_files: 0,
             completed_bytes: 0,
+            skipped_files: 0,
         }
     }
 
@@ -1146,10 +1156,15 @@ impl UploadProgress {
         self.completed_bytes = self.completed_bytes.saturating_add(size);
     }
 
+    fn on_skip(&mut self, size: u64) {
+        self.skipped_files += 1;
+        self.completed_bytes = self.completed_bytes.saturating_add(size);
+    }
+
     fn format_line(&self, name: &str, elapsed: std::time::Duration) -> String {
         let mut line = format!(
-            "Uploaded {name} (files: {}/{})",
-            self.completed_files, self.total_files
+            "Uploaded {name} (files: {}/{} | skipped: {})",
+            self.completed_files, self.total_files, self.skipped_files
         );
         if self.total_bytes > 0 {
             let percent = (self.completed_bytes as f64 / self.total_bytes as f64) * 100.0;
@@ -1163,6 +1178,37 @@ impl UploadProgress {
             line.push_str(&format!(" | {:.1} B/s", rate));
         }
         line
+    }
+}
+
+fn should_skip_upload(
+    ctx: &AppContext,
+    url: &str,
+    expected_size: u64,
+    resume: bool,
+    auth_header: &str,
+) -> Result<bool> {
+    if !resume {
+        return Ok(false);
+    }
+    let headers = vec![("Authorization".to_string(), auth_header.to_string())];
+    let info = ctx.http.head_info(url, &headers)?;
+    if info.status == 404 {
+        return Ok(false);
+    }
+    match info.content_length {
+        Some(remote_size) => {
+            if remote_size == expected_size {
+                Ok(true)
+            } else {
+                Err(Error::message(format!(
+                    "resume enabled but remote size differs for {url}"
+                )))
+            }
+        }
+        None => Err(Error::message(format!(
+            "resume enabled but remote size unknown for {url}"
+        ))),
     }
 }
 
@@ -1843,6 +1889,14 @@ mod tests {
         progress.on_complete();
         let line = progress.format_line("file.txt");
         assert!(line.contains("files: 1/2"));
+    }
+
+    #[test]
+    fn upload_progress_tracks_skips() {
+        let mut progress = UploadProgress::new(10, 2);
+        progress.on_skip(4);
+        let line = progress.format_line("file.txt", std::time::Duration::from_secs(0));
+        assert!(line.contains("skipped: 1"));
     }
 
     #[test]

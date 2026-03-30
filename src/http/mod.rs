@@ -40,6 +40,12 @@ pub struct HttpClient {
     concurrency: ConcurrencyLimiter,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HeadInfo {
+    pub status: u16,
+    pub content_length: Option<u64>,
+}
+
 impl HttpClient {
     pub fn new(config: HttpClientConfig) -> Result<Self> {
         let client = build_client(&config)?;
@@ -156,6 +162,37 @@ impl HttpClient {
             )));
         }
         Ok(())
+    }
+
+    #[instrument(skip(self, headers))]
+    pub fn head_info(&self, url: &str, headers: &[(String, String)]) -> Result<HeadInfo> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let mut request = self.client.head(url);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
+        let status = response.status();
+        if status.as_u16() != 404 && !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}",
+                status.as_u16()
+            )));
+        }
+        let content_length = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok());
+        Ok(HeadInfo {
+            status: status.as_u16(),
+            content_length,
+        })
     }
 
     pub fn api_base(&self) -> &str {

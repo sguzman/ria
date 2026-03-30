@@ -268,6 +268,35 @@
 - [x] Propagate parsed formats into transfer file list.
 - [x] Add format parsing helper function.
 - [x] Ensure format filtering respects metadata-derived formats.
+- [x] Add HTTP HEAD helper to fetch status + content-length.
+- [x] Add upload resume check using HEAD content-length.
+- [x] Skip upload when resume enabled and remote size matches.
+- [x] Error when resume enabled and remote size mismatches.
+- [x] Error when resume enabled and remote size is unknown.
+- [x] Use auth header for upload resume HEAD request.
+- [x] Add upload skip tracking in progress output.
+- [x] Include skipped uploads in verbose progress lines.
+- [x] Add tests for upload progress skip tracking.
+- [x] Gate upload resume logic on config policy.
+- [x] Handle 404 responses as missing remote file.
+- [x] Track skipped uploads in upload progress struct.
+- [x] Add upload resume helper function.
+- [x] Add upload resume error messaging with URL context.
+- [x] Update upload execution to consult resume policy.
+- [x] Add upload resume HEAD headers helper.
+- [x] Return content-length when present in HEAD responses.
+- [x] Add head info struct for status + content length.
+- [x] Propagate head failures as structured errors.
+- [x] Add upload resume no-op when disabled.
+- [x] Add upload resume support for existing files.
+- [x] Add upload resume support for missing files.
+- [x] Use rate limiter/concurrency for HEAD requests.
+- [x] Add HEAD request tracing span.
+- [x] Add skip tracking to upload progress formatting.
+- [x] Add upload skip updates to completed byte count.
+- [x] Add upload skip handling for verbose output.
+- [x] Add upload resume guard on remote size mismatch.
+- [x] Add upload resume guard on missing size header.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
