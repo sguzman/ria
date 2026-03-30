@@ -326,10 +326,10 @@
 - [x] Add skipped count to upload console output.
 - [x] Add warning when chunking configured without support.
 - [x] Add skipped count reporting for uploads.
-- [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
-- [ ] Implement `ia delete` (delete by filename/glob, dry-run).
-- [ ] Implement `ia copy` (server-side copy with metadata updates).
-- [ ] Implement `ia move` (copy + delete semantics and safety checks).
-- [ ] Implement resume support and checksum verification for downloads.
-- [ ] Implement progress reporting (per-file + aggregate).
-- [ ] Add transfer retry policy tied to config settings.
+- [x] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
+- [x] Implement `ia delete` (delete by filename/glob, dry-run).
+- [x] Implement `ia copy` (server-side copy with metadata updates).
+- [x] Implement `ia move` (copy + delete semantics and safety checks).
+- [x] Implement resume support and checksum verification for downloads.
+- [x] Implement progress reporting (per-file + aggregate).
+- [x] Add transfer retry policy tied to config settings.
