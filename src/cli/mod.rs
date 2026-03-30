@@ -284,6 +284,7 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use clap::CommandFactory;
     use super::Cli;
 
     #[test]
@@ -376,5 +377,15 @@ mod tests {
             }
             _ => panic!("unexpected command"),
         }
+    }
+
+    #[test]
+    fn help_includes_core_sections() {
+        let mut cmd = Cli::command();
+        let help = cmd.render_long_help().to_string();
+        assert!(help.contains("ria"));
+        assert!(help.contains("search"));
+        assert!(help.contains("metadata"));
+        assert!(help.contains("upload"));
     }
 }

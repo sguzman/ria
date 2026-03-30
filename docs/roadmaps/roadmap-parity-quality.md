@@ -2,13 +2,42 @@
 
 - [x] Define config discovery order (CLI flag, env vars, default paths) and document it.
 - [x] Implement environment variable overrides for auth/session and host options.
-- [ ] Match Python user-agent construction and request headers.
+- [x] Match Python user-agent construction and request headers.
 - [x] Add signal handling parity (SIGINT, SIGPIPE) and consistent exit codes.
 - [x] Implement stdin/stdout conventions for piping and streaming.
 - [x] Add robust globbing and file/identifier validation utilities.
 - [x] Implement retry/backoff, rate limiting, and concurrency controls.
-- [ ] Add resumable downloads/uploads with checksum verification.
-- [ ] Build golden CLI tests for argument parsing and output formatting.
+- [x] Add resumable downloads/uploads with checksum verification.
+- [x] Build golden CLI tests for argument parsing and output formatting.
 - [x] Add API mock fixtures and integration tests for error cases.
 - [x] Write parity notes and CLI behavior compatibility docs.
 - [x] Add default HTTP request headers (Accept/User-Agent).
+- [x] Add tests for python-style user-agent formatting.
+- [x] Add tests for default user-agent formatting.
+- [x] Include access key in python-style user-agent when enabled.
+- [x] Include locale in python-style user-agent when enabled.
+- [x] Ensure user-agent is present when not opted out.
+- [x] Add CLI help test for core sections.
+- [x] Add CLI parsing test for metadata upload mode.
+- [x] Add human list formatting helper.
+- [x] Use human list formatter in output list handler.
+- [x] Add tests for human list formatting.
+- [x] Add download resume behavior with size checks.
+- [x] Add upload resume behavior with HEAD checks.
+- [x] Add checksum verification for downloads.
+- [x] Add checksum verification for uploads.
+- [x] Add progress output for resumable uploads.
+- [x] Add progress output for resumable downloads.
+- [x] Add checksum mismatch error handling.
+- [x] Add checksum parsing from metadata.
+- [x] Add upload resume skip tracking.
+- [x] Add upload resume skip summary output.
+- [x] Add download resume skip tracking.
+- [x] Add checksum hashing helpers (md5/sha1).
+- [x] Add metadata update dry-run output formatting.
+- [x] Add metadata merge tests for list/string/object handling.
+- [x] Add JSON payload aggregation for paged searches.
+- [x] Add HEAD request helper for resume checks.
+- [x] Add form POST helper for metadata updates.
+- [x] Add CLI help formatting validation.
+- [x] Add metadata CLI update parsing tests.

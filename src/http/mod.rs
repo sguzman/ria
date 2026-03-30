@@ -446,6 +446,38 @@ fn build_client(config: &HttpClientConfig) -> Result<Client> {
     Ok(client)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_python_style_user_agent_when_enabled() {
+        let mut config = crate::config::Config::default();
+        config.auth = Some(crate::config::AuthConfig {
+            access_key: Some("access".into()),
+            secret_key: Some("secret".into()),
+        });
+        config.compatibility = Some(crate::config::CompatibilityConfig {
+            python_user_agent: Some(true),
+            ..crate::config::CompatibilityConfig::default()
+        });
+        std::env::set_var("LANG", "en_US.UTF-8");
+        let http_config = config_from_settings(&config);
+        let ua = http_config.user_agent.expect("ua");
+        assert!(ua.contains("ria/"));
+        assert!(ua.contains("en_US"));
+        assert!(ua.contains("access"));
+    }
+
+    #[test]
+    fn builds_default_user_agent_when_compat_disabled() {
+        let config = crate::config::Config::default();
+        let http_config = config_from_settings(&config);
+        let ua = http_config.user_agent.expect("ua");
+        assert!(ua.contains("ria/"));
+    }
+}
+
 fn should_retry_status(status: u16) -> bool {
     status == 429 || (500..=599).contains(&status)
 }

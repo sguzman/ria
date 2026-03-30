@@ -438,8 +438,9 @@ fn output_list(
 ) -> Result<()> {
     match ctx.output.policy().format {
         OutputFormat::Human => {
-            for item in items {
-                ctx.output.write_line(item)?;
+            let rendered = format_human_list(items);
+            if !rendered.is_empty() {
+                ctx.output.write_line(&rendered)?;
             }
             Ok(())
         }
@@ -452,6 +453,10 @@ fn output_list(
             Ok(())
         }
     }
+}
+
+fn format_human_list(items: &[String]) -> String {
+    items.join("\n")
 }
 
 fn output_value(ctx: &AppContext, json: &Value, raw: &str) -> Result<()> {
@@ -625,6 +630,16 @@ mod tests {
         let updates = vec![("title".to_string(), Value::String("New".into()))];
         let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
         assert!(patch.as_array().unwrap()[0]["op"] == "replace");
+    }
+
+    #[test]
+    fn formats_human_list_output() {
+        let output = format_human_list(&[
+            "one".to_string(),
+            "two".to_string(),
+            "three".to_string(),
+        ]);
+        assert_eq!(output, "one\ntwo\nthree");
     }
 
     #[test]
