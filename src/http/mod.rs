@@ -99,6 +99,38 @@ impl HttpClient {
         Ok(bytes.to_vec())
     }
 
+    #[instrument(skip(self, body, headers))]
+    pub fn put_bytes(
+        &self,
+        url: &str,
+        body: &[u8],
+        headers: &[(String, String)],
+    ) -> Result<()> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let mut request = self.client.put(url);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+
+        let response = self.send_with_retry(|| request.try_clone().unwrap().body(body.to_vec()).send(), url)?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response
+                .text()
+                .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(())
+    }
+
     pub fn api_base(&self) -> &str {
         &self.config.api_base
     }

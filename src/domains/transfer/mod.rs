@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
@@ -62,6 +63,8 @@ struct UploadFile {
     source: PathBuf,
     dest: String,
     size: u64,
+    md5: String,
+    sha1: String,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +73,7 @@ struct UploadPlan {
     files: Vec<UploadFile>,
     metadata: Option<Value>,
     total_bytes: u64,
+    total_files: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -98,11 +102,7 @@ pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
     if args.dry_run {
         return Ok(());
     }
-    warn!("upload not implemented");
-    let _ = ctx
-        .output
-        .write_error("ria: upload not implemented (use --dry-run to preview)");
-    Err(Error::not_implemented("upload"))
+    execute_upload(ctx, &plan, policy)
 }
 
 #[instrument(skip(ctx))]
@@ -538,11 +538,13 @@ fn plan_upload(ctx: &AppContext, args: &UploadArgs) -> Result<UploadPlan> {
     };
 
     let total_bytes = files.iter().map(|file| file.size).sum();
+    let total_files = files.len();
     Ok(UploadPlan {
         identifier: args.identifier.clone(),
         files,
         metadata,
         total_bytes,
+        total_files,
     })
 }
 
@@ -563,6 +565,8 @@ fn emit_upload_plan(
                         "source": file.source.display().to_string(),
                         "dest": file.dest,
                         "size": file.size,
+                        "md5": file.md5,
+                        "sha1": file.sha1,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -570,6 +574,7 @@ fn emit_upload_plan(
                 "identifier": plan.identifier,
                 "dry_run": dry_run,
                 "total_bytes": plan.total_bytes,
+                "total_files": plan.total_files,
                 "resume": policy.resume,
                 "checksum_verify": policy.checksum_verify,
                 "chunk_size_bytes": policy.chunk_size_bytes,
@@ -599,10 +604,12 @@ fn emit_upload_plan(
             for file in &plan.files {
                 ctx.output
                     .write_line(&format!(
-                        "{} -> {} ({} bytes)",
+                        "{} -> {} ({} bytes) [md5:{} sha1:{}]",
                         file.source.display(),
                         file.dest,
-                        file.size
+                        file.size,
+                        file.md5,
+                        file.sha1
                     ))
                     .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
             }
@@ -653,10 +660,13 @@ fn collect_upload_files(paths: &[PathBuf]) -> Result<Vec<UploadFile>> {
                     "duplicate upload destination: {dest}"
                 )));
             }
+            let (md5, sha1) = compute_hashes_from_path(path)?;
             files.push(UploadFile {
                 source: path.clone(),
                 dest,
                 size: metadata.len(),
+                md5,
+                sha1,
             });
         } else {
             return Err(Error::message(format!(
@@ -695,10 +705,13 @@ fn collect_dir_files(
                     "duplicate upload destination: {dest}"
                 )));
             }
+            let (md5, sha1) = compute_hashes_from_path(&path)?;
             files.push(UploadFile {
                 source: path,
                 dest,
                 size: metadata.len(),
+                md5,
+                sha1,
             });
         }
     }
@@ -936,6 +949,153 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 
 fn equals_ignore_case(left: &str, right: &str) -> bool {
     left.eq_ignore_ascii_case(right)
+}
+
+fn compute_hashes_from_path(path: &Path) -> Result<(String, String)> {
+    let mut file = fs::File::open(path).map_err(|err| {
+        Error::message(format!("failed to read {}: {err}", path.display()))
+    })?;
+    let mut md5_ctx = md5::Context::new();
+    let mut sha1_ctx = Sha1::new();
+    let mut buffer = [0u8; 32 * 1024];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buffer)
+            .map_err(|err| Error::message(format!("failed to read {}: {err}", path.display())))?;
+        if read == 0 {
+            break;
+        }
+        md5_ctx.consume(&buffer[..read]);
+        sha1_ctx.update(&buffer[..read]);
+    }
+    let md5 = bytes_to_hex(&md5_ctx.finalize().0);
+    let sha1 = bytes_to_hex(&sha1_ctx.finalize());
+    Ok((md5, sha1))
+}
+
+fn execute_upload(ctx: &AppContext, plan: &UploadPlan, policy: TransferPolicy) -> Result<()> {
+    let mut progress = UploadProgress::new(plan.total_bytes, plan.total_files);
+    for file in &plan.files {
+        let url = build_upload_url(ctx.http.s3_base(), &plan.identifier, &file.dest)?;
+        let headers = build_upload_headers(&file.md5, &file.sha1, policy, &ctx.config)?;
+        info!(
+            file = %file.dest,
+            url = %url,
+            size = file.size,
+            "uploading file"
+        );
+
+        let start = Instant::now();
+        let body = fs::read(&file.source).map_err(|err| {
+            Error::message(format!("failed to read {}: {err}", file.source.display()))
+        })?;
+        ctx.http
+            .put_bytes(&url, &body, &headers)
+            .map_err(|err| Error::message(format!("upload failed for {}: {err}", file.dest)))?;
+
+        progress.on_complete(file.size);
+        if ctx.output.policy().verbose {
+            let line = progress.format_line(&file.dest, start.elapsed());
+            let _ = ctx.output.write_line(&line);
+        }
+    }
+
+    if ctx.output.policy().format == OutputFormat::Json {
+        let value = json!({
+            "identifier": plan.identifier,
+            "uploaded_files": plan.total_files,
+            "uploaded_bytes": progress.completed_bytes,
+        });
+        ctx.output
+            .write_json(&value)
+            .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+    } else {
+        ctx.output
+            .write_line(&format!(
+                "Uploaded {} files ({} bytes)",
+                plan.total_files, progress.completed_bytes
+            ))
+            .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+    }
+
+    Ok(())
+}
+
+fn build_upload_url(base: &str, identifier: &str, dest: &str) -> Result<String> {
+    build_file_url(base, identifier, dest)
+}
+
+fn build_upload_headers(
+    md5: &str,
+    sha1: &str,
+    policy: TransferPolicy,
+    config: &crate::config::Config,
+) -> Result<Vec<(String, String)>> {
+    let access = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.access_key.as_deref())
+        .ok_or_else(|| Error::message("missing access key for upload"))?;
+    let secret = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.secret_key.as_deref())
+        .ok_or_else(|| Error::message("missing secret key for upload"))?;
+
+    let mut headers = Vec::new();
+    headers.push(("Content-MD5".to_string(), md5.to_string()));
+    headers.push(("X-Archive-SHA1".to_string(), sha1.to_string()));
+    headers.push(("X-Archive-User".to_string(), access.to_string()));
+    headers.push(("X-Archive-Secret".to_string(), secret.to_string()));
+    if policy.chunk_size_bytes.is_some() {
+        headers.push((
+            "X-Archive-Queue-Derive".to_string(),
+            "0".to_string(),
+        ));
+    }
+    Ok(headers)
+}
+
+#[derive(Debug)]
+struct UploadProgress {
+    total_bytes: u64,
+    total_files: usize,
+    completed_files: usize,
+    completed_bytes: u64,
+}
+
+impl UploadProgress {
+    fn new(total_bytes: u64, total_files: usize) -> Self {
+        Self {
+            total_bytes,
+            total_files,
+            completed_files: 0,
+            completed_bytes: 0,
+        }
+    }
+
+    fn on_complete(&mut self, size: u64) {
+        self.completed_files += 1;
+        self.completed_bytes = self.completed_bytes.saturating_add(size);
+    }
+
+    fn format_line(&self, name: &str, elapsed: std::time::Duration) -> String {
+        let mut line = format!(
+            "Uploaded {name} (files: {}/{})",
+            self.completed_files, self.total_files
+        );
+        if self.total_bytes > 0 {
+            let percent = (self.completed_bytes as f64 / self.total_bytes as f64) * 100.0;
+            line.push_str(&format!(
+                " | bytes: {}/{} ({:.1}%)",
+                self.completed_bytes, self.total_bytes, percent
+            ));
+        }
+        if elapsed.as_secs_f64() > 0.0 {
+            let rate = self.completed_bytes as f64 / elapsed.as_secs_f64();
+            line.push_str(&format!(" | {:.1} B/s", rate));
+        }
+        line
+    }
 }
 
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
@@ -1366,5 +1526,15 @@ mod tests {
         let bytes = b"test";
         let err = verify_checksums("file.txt", bytes, Some("deadbeef"), None).unwrap_err();
         assert!(err.to_string().contains("md5 checksum mismatch"));
+    }
+
+    #[test]
+    fn computes_hashes_from_path() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("file.txt");
+        fs::write(&path, "test").expect("write");
+        let (md5, sha1) = compute_hashes_from_path(&path).expect("hashes");
+        assert_eq!(md5, "098f6bcd4621d373cade4e832627b4f6");
+        assert_eq!(sha1, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
     }
 }

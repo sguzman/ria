@@ -150,6 +150,35 @@
 - [x] Add checksum compare helper.
 - [x] Include checksum fixtures in sample metadata test data.
 - [x] Use checksum helpers during download verification.
+- [x] Add upload execution flow using S3 PUT.
+- [x] Build upload URL from base, identifier, and destination path.
+- [x] Compute md5/sha1 for upload files.
+- [x] Stream file hashing for uploads to avoid large reads.
+- [x] Include upload checksums in plan JSON output.
+- [x] Include upload checksums in plan human output.
+- [x] Require access and secret keys for uploads.
+- [x] Add upload headers for user and secret keys.
+- [x] Add upload headers for content md5 and sha1.
+- [x] Emit upload summary in human output.
+- [x] Emit upload summary in JSON output.
+- [x] Add upload progress tracking structure.
+- [x] Emit per-file upload progress in verbose mode.
+- [x] Track upload bytes and file counts.
+- [x] Surface upload total files in plan output.
+- [x] Add tests for hashing files from disk.
+- [x] Add tests for checksum fields in metadata parsing.
+- [x] Add upload policy plumbing to execution.
+- [x] Use transfer policy for upload header tuning.
+- [x] Add error when upload creds missing.
+- [x] Add helper to compute hashes from file path.
+- [x] Avoid duplicate full reads by streaming hash computation.
+- [x] Add upload header builder.
+- [x] Add upload URL helper.
+- [x] Add HTTP PUT helper for upload bytes.
+- [x] Add upload tracing fields (file, url, size).
+- [x] Add upload elapsed time reporting.
+- [x] Add upload rate calculation for verbose output.
+- [x] Add upload summary output when complete.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
