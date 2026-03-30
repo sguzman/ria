@@ -1,0 +1,32 @@
+# Tranche 1 (30 Items)
+
+- [x] Add `clap` dependency for CLI parsing.
+- [x] Add `serde` dependency for config deserialization.
+- [x] Add `toml` dependency for config parsing.
+- [x] Add `thiserror` dependency for structured errors.
+- [x] Add `tracing` dependency for structured logging.
+- [x] Add `tracing-subscriber` dependency with env filter support.
+- [x] Define a shared error enum with IO, TOML, and command errors.
+- [x] Provide an error helper for plain message errors.
+- [x] Implement `telemetry::init` with env filter fallback.
+- [x] Wire telemetry initialization to CLI-selected log levels.
+- [x] Define the top-level CLI struct with clap metadata.
+- [x] Add global CLI flags for config, logging, and network overrides.
+- [x] Add subcommand enum for all IA command families.
+- [x] Require subcommand or show help by default.
+- [x] Resolve config path from CLI or `RIA_CONFIG` environment variable.
+- [x] Load config from a TOML file when provided.
+- [x] Parse TOML into strongly typed config structs.
+- [x] Define logging config struct with level field.
+- [x] Define general config struct with host/insecure/user-agent fields.
+- [x] Add config overrides struct for CLI overrides.
+- [x] Merge CLI overrides into config struct.
+- [x] Log config load details with tracing.
+- [x] Log command dispatch with tracing.
+- [x] Set a default log level when none is provided.
+- [x] Enable thread IDs and names in tracing output.
+- [x] Keep CLI entrypoint small and delegate to `cli::run()`.
+- [x] Print errors to stderr from main.
+- [x] Exit with non-zero status on failure.
+- [x] Keep config module free of CLI dependencies.
+- [x] Preserve domain-oriented module layout while wiring CLI.

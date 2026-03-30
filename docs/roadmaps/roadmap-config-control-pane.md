@@ -1,6 +1,8 @@
 # Roadmap: TOML Config Control Pane
 
-- [ ] Define config file name(s) and discovery order (CLI flag, env var, default paths).
+- [x] Resolve config path from CLI flag and `RIA_CONFIG` environment variable.
+- [ ] Define default config file paths (XDG, platform-specific).
+- [x] Add initial TOML config structs and parsing.
 - [ ] Specify a full TOML schema covering all CLI flags and defaults.
 - [ ] Add logging policies: level, format, sinks, sampling, and per-module overrides.
 - [ ] Add network policies: timeouts, retries, backoff strategy, rate limits, concurrency.

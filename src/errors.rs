@@ -1,24 +1,21 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub struct Error {
-    message: String,
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("config parse error: {0}")]
+    Toml(#[from] toml::de::Error),
+    #[error("missing command")]
+    MissingCommand,
+    #[error("{0}")]
+    Message(String),
 }
 
 impl Error {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
+    pub fn message(message: impl Into<String>) -> Self {
+        Self::Message(message.into())
     }
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
