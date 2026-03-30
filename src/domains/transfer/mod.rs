@@ -32,6 +32,26 @@ struct DownloadPlan {
 }
 
 #[derive(Debug, Clone)]
+struct DeletePlan {
+    identifier: String,
+    files: Vec<TransferFile>,
+}
+
+#[derive(Debug, Clone)]
+struct CopyPlan {
+    source_identifier: String,
+    dest_identifier: String,
+    files: Vec<TransferFile>,
+}
+
+#[derive(Debug, Clone)]
+struct MovePlan {
+    source_identifier: String,
+    dest_identifier: String,
+    files: Vec<TransferFile>,
+}
+
+#[derive(Debug, Clone)]
 struct UploadFile {
     source: PathBuf,
     dest: String,
@@ -72,22 +92,43 @@ pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
 
 #[instrument(skip(ctx))]
 pub fn delete(ctx: &AppContext, _args: &DeleteArgs) -> Result<()> {
+    let plan = plan_delete(ctx, _args)?;
+    emit_delete_plan(ctx, &plan, _args.dry_run)?;
+    if _args.dry_run {
+        return Ok(());
+    }
     warn!("delete not implemented");
-    let _ = ctx.output.write_error("ria: delete not implemented");
+    let _ = ctx
+        .output
+        .write_error("ria: delete not implemented (use --dry-run to preview)");
     Err(Error::not_implemented("delete"))
 }
 
 #[instrument(skip(ctx))]
 pub fn copy(ctx: &AppContext, _args: &CopyArgs) -> Result<()> {
+    let plan = plan_copy(ctx, _args)?;
+    emit_copy_plan(ctx, &plan, _args.dry_run)?;
+    if _args.dry_run {
+        return Ok(());
+    }
     warn!("copy not implemented");
-    let _ = ctx.output.write_error("ria: copy not implemented");
+    let _ = ctx
+        .output
+        .write_error("ria: copy not implemented (use --dry-run to preview)");
     Err(Error::not_implemented("copy"))
 }
 
 #[instrument(skip(ctx))]
 pub fn move_item(ctx: &AppContext, _args: &MoveArgs) -> Result<()> {
+    let plan = plan_move(ctx, _args)?;
+    emit_move_plan(ctx, &plan, _args.dry_run)?;
+    if _args.dry_run {
+        return Ok(());
+    }
     warn!("move not implemented");
-    let _ = ctx.output.write_error("ria: move not implemented");
+    let _ = ctx
+        .output
+        .write_error("ria: move not implemented (use --dry-run to preview)");
     Err(Error::not_implemented("move"))
 }
 
@@ -102,7 +143,7 @@ fn plan_download(ctx: &AppContext, args: &DownloadArgs) -> Result<DownloadPlan> 
         .map(|file| (file.name.clone(), file))
         .collect::<HashMap<_, _>>();
 
-    let selection = select_files(ctx, args, &available_map)?;
+    let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
     let mut planned = Vec::with_capacity(selection.len());
     for file in selection {
         validate_download_path(&file.name)?;
@@ -209,6 +250,200 @@ fn emit_plan(ctx: &AppContext, plan: &DownloadPlan, dry_run: bool) -> Result<()>
                 };
                 ctx.output
                     .write_line(&line)
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[instrument(skip(ctx, args))]
+fn plan_delete(ctx: &AppContext, args: &DeleteArgs) -> Result<DeletePlan> {
+    validate_identifier(ctx, &args.identifier)?;
+    let metadata = fetch_metadata(ctx, &args.identifier)?;
+    let available = parse_metadata_files(&metadata)?;
+    let available_map = available
+        .into_iter()
+        .map(|file| (file.name.clone(), file))
+        .collect::<HashMap<_, _>>();
+    let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    Ok(DeletePlan {
+        identifier: args.identifier.clone(),
+        files: selection,
+    })
+}
+
+#[instrument(skip(ctx, plan))]
+fn emit_delete_plan(ctx: &AppContext, plan: &DeletePlan, dry_run: bool) -> Result<()> {
+    match ctx.output.policy().format {
+        OutputFormat::Json => {
+            let files = plan
+                .files
+                .iter()
+                .map(|file| {
+                    json!({
+                        "name": file.name,
+                        "size": file.size,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let value = json!({
+                "identifier": plan.identifier,
+                "dry_run": dry_run,
+                "files": files,
+            });
+            ctx.output
+                .write_json(&value)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))
+        }
+        _ => {
+            let header = if dry_run {
+                format!("Delete plan for {} (dry-run)", plan.identifier)
+            } else {
+                format!("Deleting from {}", plan.identifier)
+            };
+            ctx.output
+                .write_line(&header)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            for file in &plan.files {
+                ctx.output
+                    .write_line(&file.name)
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[instrument(skip(ctx, args))]
+fn plan_copy(ctx: &AppContext, args: &CopyArgs) -> Result<CopyPlan> {
+    validate_identifier(ctx, &args.source_identifier)?;
+    validate_identifier(ctx, &args.dest_identifier)?;
+    ensure_distinct_identifiers(&args.source_identifier, &args.dest_identifier, "copy")?;
+    let metadata = fetch_metadata(ctx, &args.source_identifier)?;
+    let available = parse_metadata_files(&metadata)?;
+    let available_map = available
+        .into_iter()
+        .map(|file| (file.name.clone(), file))
+        .collect::<HashMap<_, _>>();
+    let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    Ok(CopyPlan {
+        source_identifier: args.source_identifier.clone(),
+        dest_identifier: args.dest_identifier.clone(),
+        files: selection,
+    })
+}
+
+#[instrument(skip(ctx, plan))]
+fn emit_copy_plan(ctx: &AppContext, plan: &CopyPlan, dry_run: bool) -> Result<()> {
+    match ctx.output.policy().format {
+        OutputFormat::Json => {
+            let files = plan
+                .files
+                .iter()
+                .map(|file| {
+                    json!({
+                        "name": file.name,
+                        "size": file.size,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let value = json!({
+                "source_identifier": plan.source_identifier,
+                "dest_identifier": plan.dest_identifier,
+                "dry_run": dry_run,
+                "files": files,
+            });
+            ctx.output
+                .write_json(&value)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))
+        }
+        _ => {
+            let header = if dry_run {
+                format!(
+                    "Copy plan {} -> {} (dry-run)",
+                    plan.source_identifier, plan.dest_identifier
+                )
+            } else {
+                format!(
+                    "Copying {} -> {}",
+                    plan.source_identifier, plan.dest_identifier
+                )
+            };
+            ctx.output
+                .write_line(&header)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            for file in &plan.files {
+                ctx.output
+                    .write_line(&file.name)
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[instrument(skip(ctx, args))]
+fn plan_move(ctx: &AppContext, args: &MoveArgs) -> Result<MovePlan> {
+    validate_identifier(ctx, &args.source_identifier)?;
+    validate_identifier(ctx, &args.dest_identifier)?;
+    ensure_distinct_identifiers(&args.source_identifier, &args.dest_identifier, "move")?;
+    let metadata = fetch_metadata(ctx, &args.source_identifier)?;
+    let available = parse_metadata_files(&metadata)?;
+    let available_map = available
+        .into_iter()
+        .map(|file| (file.name.clone(), file))
+        .collect::<HashMap<_, _>>();
+    let selection = select_files(ctx, &args.files, args.glob.as_deref(), &available_map)?;
+    Ok(MovePlan {
+        source_identifier: args.source_identifier.clone(),
+        dest_identifier: args.dest_identifier.clone(),
+        files: selection,
+    })
+}
+
+#[instrument(skip(ctx, plan))]
+fn emit_move_plan(ctx: &AppContext, plan: &MovePlan, dry_run: bool) -> Result<()> {
+    match ctx.output.policy().format {
+        OutputFormat::Json => {
+            let files = plan
+                .files
+                .iter()
+                .map(|file| {
+                    json!({
+                        "name": file.name,
+                        "size": file.size,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let value = json!({
+                "source_identifier": plan.source_identifier,
+                "dest_identifier": plan.dest_identifier,
+                "dry_run": dry_run,
+                "files": files,
+            });
+            ctx.output
+                .write_json(&value)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))
+        }
+        _ => {
+            let header = if dry_run {
+                format!(
+                    "Move plan {} -> {} (dry-run)",
+                    plan.source_identifier, plan.dest_identifier
+                )
+            } else {
+                format!(
+                    "Moving {} -> {}",
+                    plan.source_identifier, plan.dest_identifier
+                )
+            };
+            ctx.output
+                .write_line(&header)
+                .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            for file in &plan.files {
+                ctx.output
+                    .write_line(&file.name)
                     .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
             }
             Ok(())
@@ -461,6 +696,15 @@ fn contains_glob_pattern(path: &Path) -> bool {
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']'))
 }
 
+fn ensure_distinct_identifiers(source: &str, dest: &str, action: &str) -> Result<()> {
+    if source == dest {
+        return Err(Error::message(format!(
+            "{action} source and destination identifiers must differ"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
     let validate = ctx
         .config
@@ -510,23 +754,22 @@ fn parse_metadata_files(metadata: &Value) -> Result<Vec<TransferFile>> {
 
 fn select_files(
     ctx: &AppContext,
-    args: &DownloadArgs,
+    files: &[String],
+    glob: Option<&str>,
     available: &HashMap<String, TransferFile>,
 ) -> Result<Vec<TransferFile>> {
     let mut selected = HashSet::new();
     let mut results = Vec::new();
 
-    let glob_pattern = args
-        .glob
-        .as_deref()
+    let glob_pattern = glob
         .or_else(|| ctx.config.input.as_ref().and_then(|input| input.glob.as_deref()));
     let glob_matcher = match glob_pattern {
         Some(pattern) => Some(GlobMatcher::new(&[pattern.to_string()])?),
         None => None,
     };
 
-    if !args.files.is_empty() {
-        for name in &args.files {
+    if !files.is_empty() {
+        for name in files {
             let file = available.get(name).ok_or_else(|| {
                 Error::message(format!("requested file not found in metadata: {name}"))
             })?;
@@ -717,6 +960,47 @@ mod tests {
             url,
             "https://s3.us.archive.org/sample-item/nested/file.txt"
         );
+    }
+
+    #[test]
+    fn plans_delete_with_glob_selection() {
+        let mut ctx = test_context();
+        ctx.config.input = Some(crate::config::InputConfig {
+            glob: Some("*.txt".into()),
+            validate_identifiers: Some(true),
+            read_stdin: None,
+        });
+        let args = DeleteArgs {
+            identifier: "example".into(),
+            files: Vec::new(),
+            glob: None,
+            dry_run: true,
+        };
+        let metadata = sample_metadata();
+        let available = parse_metadata_files(&metadata).expect("files");
+        let available_map = available
+            .into_iter()
+            .map(|file| (file.name.clone(), file))
+            .collect::<HashMap<_, _>>();
+        let selection = select_files(&ctx, &args.files, args.glob.as_deref(), &available_map)
+            .expect("selection");
+        assert_eq!(selection.len(), 2);
+    }
+
+    #[test]
+    fn copy_requires_distinct_identifiers() {
+        let err = ensure_distinct_identifiers("same", "same", "copy").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("copy source and destination identifiers must differ"));
+    }
+
+    #[test]
+    fn move_requires_distinct_identifiers() {
+        let err = ensure_distinct_identifiers("same", "same", "move").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("move source and destination identifiers must differ"));
     }
 
     #[test]

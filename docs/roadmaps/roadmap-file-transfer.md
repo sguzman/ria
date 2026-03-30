@@ -60,6 +60,36 @@
 - [x] Add tests for recursive directory upload discovery.
 - [x] Add tests for duplicate destination detection.
 - [x] Add tests for unsupported metadata extension errors.
+- [x] Define delete plan struct with identifier + file list.
+- [x] Define copy plan struct with source/dest identifiers.
+- [x] Define move plan struct with source/dest identifiers.
+- [x] Validate identifiers for delete operations.
+- [x] Validate identifiers for copy operations.
+- [x] Validate identifiers for move operations.
+- [x] Enforce distinct source/dest identifiers for copy.
+- [x] Enforce distinct source/dest identifiers for move.
+- [x] Fetch metadata for delete selection planning.
+- [x] Fetch metadata for copy selection planning.
+- [x] Fetch metadata for move selection planning.
+- [x] Reuse selection helper for delete planning.
+- [x] Reuse selection helper for copy planning.
+- [x] Reuse selection helper for move planning.
+- [x] Emit human delete plan output with file list.
+- [x] Emit JSON delete plan output.
+- [x] Emit human copy plan output with file list.
+- [x] Emit JSON copy plan output.
+- [x] Emit human move plan output with file list.
+- [x] Emit JSON move plan output.
+- [x] Include dry-run indicator in delete plan output.
+- [x] Include dry-run indicator in copy plan output.
+- [x] Include dry-run indicator in move plan output.
+- [x] Add tracing span for delete planning.
+- [x] Add tracing span for copy planning.
+- [x] Add tracing span for move planning.
+- [x] Add tracing span for delete plan emission.
+- [x] Add tracing span for copy plan emission.
+- [x] Add tracing span for move plan emission.
+- [x] Add tests for distinct identifier validation.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
