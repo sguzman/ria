@@ -29,6 +29,7 @@ struct DownloadPlan {
     identifier: String,
     dest: PathBuf,
     files: Vec<PlannedFile>,
+    total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,20 +67,29 @@ struct UploadPlan {
     total_bytes: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TransferPolicy {
+    resume: bool,
+    checksum_verify: bool,
+    chunk_size_bytes: Option<u64>,
+}
+
 #[instrument(skip(ctx))]
 pub fn download(ctx: &AppContext, args: &DownloadArgs) -> Result<()> {
+    let policy = TransferPolicy::from_config(ctx);
     let plan = plan_download(ctx, args)?;
-    emit_plan(ctx, &plan, args.dry_run)?;
+    emit_plan(ctx, &plan, args.dry_run, policy)?;
     if args.dry_run {
         return Ok(());
     }
-    execute_download(ctx, &plan)
+    execute_download(ctx, &plan, policy)
 }
 
 #[instrument(skip(ctx))]
 pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
+    let policy = TransferPolicy::from_config(ctx);
     let plan = plan_upload(ctx, args)?;
-    emit_upload_plan(ctx, &plan, args.dry_run)?;
+    emit_upload_plan(ctx, &plan, args.dry_run, policy)?;
     if args.dry_run {
         return Ok(());
     }
@@ -155,15 +165,18 @@ fn plan_download(ctx: &AppContext, args: &DownloadArgs) -> Result<DownloadPlan> 
     }
     planned.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let total_bytes = planned.iter().map(|file| file.size).sum::<Option<u64>>();
+
     Ok(DownloadPlan {
         identifier: args.identifier.clone(),
         dest: args.dest.clone(),
         files: planned,
+        total_bytes,
     })
 }
 
 #[instrument(skip(ctx, plan))]
-fn execute_download(ctx: &AppContext, plan: &DownloadPlan) -> Result<()> {
+fn execute_download(ctx: &AppContext, plan: &DownloadPlan, policy: TransferPolicy) -> Result<()> {
     fs::create_dir_all(&plan.dest).map_err(|err| {
         Error::message(format!(
             "failed to create destination directory {}: {err}",
@@ -171,6 +184,7 @@ fn execute_download(ctx: &AppContext, plan: &DownloadPlan) -> Result<()> {
         ))
     })?;
 
+    let mut aggregate = DownloadProgress::new(plan.total_bytes);
     for file in &plan.files {
         let dest_path = plan.dest.join(Path::new(&file.name));
         if let Some(parent) = dest_path.parent() {
@@ -180,6 +194,11 @@ fn execute_download(ctx: &AppContext, plan: &DownloadPlan) -> Result<()> {
                     parent.display()
                 ))
             })?;
+        }
+
+        if should_skip_existing(&dest_path, file.size, policy.resume)? {
+            aggregate.on_skip(file.size);
+            continue;
         }
 
         info!(
@@ -196,13 +215,24 @@ fn execute_download(ctx: &AppContext, plan: &DownloadPlan) -> Result<()> {
                 dest_path.display()
             ))
         })?;
+
+        aggregate.on_complete(file.size.or_else(|| Some(bytes.len() as u64)));
+        if ctx.output.policy().verbose {
+            let line = aggregate.format_line(&file.name);
+            let _ = ctx.output.write_line(&line);
+        }
     }
 
     Ok(())
 }
 
 #[instrument(skip(ctx, plan))]
-fn emit_plan(ctx: &AppContext, plan: &DownloadPlan, dry_run: bool) -> Result<()> {
+fn emit_plan(
+    ctx: &AppContext,
+    plan: &DownloadPlan,
+    dry_run: bool,
+    policy: TransferPolicy,
+) -> Result<()> {
     match ctx.output.policy().format {
         OutputFormat::Json => {
             let files = plan
@@ -220,6 +250,10 @@ fn emit_plan(ctx: &AppContext, plan: &DownloadPlan, dry_run: bool) -> Result<()>
                 "identifier": plan.identifier,
                 "dest": plan.dest.display().to_string(),
                 "dry_run": dry_run,
+                "resume": policy.resume,
+                "checksum_verify": policy.checksum_verify,
+                "chunk_size_bytes": policy.chunk_size_bytes,
+                "total_bytes": plan.total_bytes,
                 "files": files,
             });
             ctx.output
@@ -250,6 +284,24 @@ fn emit_plan(ctx: &AppContext, plan: &DownloadPlan, dry_run: bool) -> Result<()>
                 };
                 ctx.output
                     .write_line(&line)
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            if let Some(total) = plan.total_bytes {
+                ctx.output
+                    .write_line(&format!("Total bytes: {total}"))
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            if ctx.output.policy().verbose {
+                ctx.output
+                    .write_line(&format!(
+                        "Resume: {} | Checksum verify: {} | Chunk size: {}",
+                        policy.resume,
+                        policy.checksum_verify,
+                        policy
+                            .chunk_size_bytes
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "default".to_string())
+                    ))
                     .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
             }
             Ok(())
@@ -478,7 +530,12 @@ fn plan_upload(ctx: &AppContext, args: &UploadArgs) -> Result<UploadPlan> {
 }
 
 #[instrument(skip(ctx, plan))]
-fn emit_upload_plan(ctx: &AppContext, plan: &UploadPlan, dry_run: bool) -> Result<()> {
+fn emit_upload_plan(
+    ctx: &AppContext,
+    plan: &UploadPlan,
+    dry_run: bool,
+    policy: TransferPolicy,
+) -> Result<()> {
     match ctx.output.policy().format {
         OutputFormat::Json => {
             let files = plan
@@ -496,6 +553,9 @@ fn emit_upload_plan(ctx: &AppContext, plan: &UploadPlan, dry_run: bool) -> Resul
                 "identifier": plan.identifier,
                 "dry_run": dry_run,
                 "total_bytes": plan.total_bytes,
+                "resume": policy.resume,
+                "checksum_verify": policy.checksum_verify,
+                "chunk_size_bytes": policy.chunk_size_bytes,
                 "files": files,
                 "metadata": plan.metadata,
             });
@@ -532,6 +592,19 @@ fn emit_upload_plan(ctx: &AppContext, plan: &UploadPlan, dry_run: bool) -> Resul
             if plan.metadata.is_some() {
                 ctx.output
                     .write_line("Metadata: provided")
+                    .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+            }
+            if ctx.output.policy().verbose {
+                ctx.output
+                    .write_line(&format!(
+                        "Resume: {} | Checksum verify: {} | Chunk size: {}",
+                        policy.resume,
+                        policy.checksum_verify,
+                        policy
+                            .chunk_size_bytes
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "default".to_string())
+                    ))
                     .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
             }
             Ok(())
@@ -703,6 +776,93 @@ fn ensure_distinct_identifiers(source: &str, dest: &str, action: &str) -> Result
         )));
     }
     Ok(())
+}
+
+impl TransferPolicy {
+    fn from_config(ctx: &AppContext) -> Self {
+        let config = ctx.config.file_transfer.as_ref();
+        Self {
+            resume: config.and_then(|cfg| cfg.resume).unwrap_or(false),
+            checksum_verify: config
+                .and_then(|cfg| cfg.checksum_verify)
+                .unwrap_or(false),
+            chunk_size_bytes: config.and_then(|cfg| cfg.chunk_size_bytes),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DownloadProgress {
+    total_bytes: Option<u64>,
+    completed_files: u64,
+    completed_bytes: u64,
+    skipped_files: u64,
+}
+
+impl DownloadProgress {
+    fn new(total_bytes: Option<u64>) -> Self {
+        Self {
+            total_bytes,
+            completed_files: 0,
+            completed_bytes: 0,
+            skipped_files: 0,
+        }
+    }
+
+    fn on_complete(&mut self, size: Option<u64>) {
+        self.completed_files += 1;
+        if let Some(size) = size {
+            self.completed_bytes = self.completed_bytes.saturating_add(size);
+        }
+    }
+
+    fn on_skip(&mut self, size: Option<u64>) {
+        self.skipped_files += 1;
+        if let Some(size) = size {
+            self.completed_bytes = self.completed_bytes.saturating_add(size);
+        }
+    }
+
+    fn format_line(&self, name: &str) -> String {
+        let mut line = format!(
+            "Downloaded {name} (files: {} done, {} skipped)",
+            self.completed_files, self.skipped_files
+        );
+        if let Some(total) = self.total_bytes {
+            if total > 0 {
+                let percent = (self.completed_bytes as f64 / total as f64) * 100.0;
+                line.push_str(&format!(
+                    " | bytes: {}/{} ({:.1}%)",
+                    self.completed_bytes, total, percent
+                ));
+            }
+        }
+        line
+    }
+}
+
+fn should_skip_existing(path: &Path, expected_size: Option<u64>, resume: bool) -> Result<bool> {
+    if !resume {
+        return Ok(false);
+    }
+    if let Ok(metadata) = fs::metadata(path) {
+        if metadata.is_file() {
+            if let Some(expected) = expected_size {
+                if metadata.len() == expected {
+                    return Ok(true);
+                }
+                return Err(Error::message(format!(
+                    "resume enabled but existing file size differs for {}",
+                    path.display()
+                )));
+            }
+            return Err(Error::message(format!(
+                "resume enabled but metadata size unknown for {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(false)
 }
 
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
@@ -1058,5 +1218,31 @@ mod tests {
         fs::write(&path, "title=Example").expect("write");
         let err = load_metadata_sidecar(&path).unwrap_err();
         assert!(err.to_string().contains("unsupported metadata file extension"));
+    }
+
+    #[test]
+    fn resume_skips_existing_when_size_matches() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("file.txt");
+        fs::write(&path, "data").expect("write");
+        let skip = should_skip_existing(&path, Some(4), true).expect("skip");
+        assert!(skip);
+    }
+
+    #[test]
+    fn resume_errors_on_size_mismatch() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("file.txt");
+        fs::write(&path, "data").expect("write");
+        let err = should_skip_existing(&path, Some(2), true).unwrap_err();
+        assert!(err.to_string().contains("existing file size differs"));
+    }
+
+    #[test]
+    fn progress_formats_with_totals() {
+        let mut progress = DownloadProgress::new(Some(10));
+        progress.on_complete(Some(4));
+        let line = progress.format_line("file.txt");
+        assert!(line.contains("40.0%"));
     }
 }

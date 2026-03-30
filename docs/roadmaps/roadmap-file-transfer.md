@@ -90,6 +90,36 @@
 - [x] Add tracing span for copy plan emission.
 - [x] Add tracing span for move plan emission.
 - [x] Add tests for distinct identifier validation.
+- [x] Add transfer policy struct resolved from config.
+- [x] Read resume flag from config for transfers.
+- [x] Read checksum verification flag from config for transfers.
+- [x] Read transfer chunk size from config for transfers.
+- [x] Include transfer policy in download plan JSON output.
+- [x] Include transfer policy in upload plan JSON output.
+- [x] Include transfer policy in verbose human download output.
+- [x] Include transfer policy in verbose human upload output.
+- [x] Track total bytes in download plan.
+- [x] Emit total bytes line for download plan output.
+- [x] Compute aggregate download progress across files.
+- [x] Emit per-file progress lines when verbose.
+- [x] Track skipped files in download progress.
+- [x] Skip existing file when resume enabled and size matches.
+- [x] Error when resume enabled and existing file size differs.
+- [x] Error when resume enabled and metadata size is missing.
+- [x] Add progress formatting helper for aggregate output.
+- [x] Add helper for resume behavior on existing files.
+- [x] Add tests for resume skip behavior.
+- [x] Add tests for resume mismatch error.
+- [x] Add tests for progress formatting output.
+- [x] Account for skipped files in aggregate progress.
+- [x] Account for completed files in aggregate progress.
+- [x] Wire transfer policy into download flow.
+- [x] Wire transfer policy into upload flow.
+- [x] Add total bytes field in download plan JSON output.
+- [x] Calculate download total bytes from metadata sizes.
+- [x] Respect resume policy during download execution.
+- [x] Use output verbosity to toggle progress output.
+- [x] Surface checksum/chunk settings in plan outputs.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
