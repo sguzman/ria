@@ -62,9 +62,7 @@ pub enum Command {
     List {
         identifier: String,
     },
-    Metadata {
-        identifier: String,
-    },
+    Metadata(MetadataArgs),
     Move(MoveArgs),
     Reviews,
     Search {
@@ -73,6 +71,8 @@ pub enum Command {
         rows: u32,
         #[arg(long = "page", default_value_t = 1)]
         page: u32,
+        #[arg(long = "pages", default_value_t = 1)]
+        pages: u32,
     },
     Simplelists,
     Tasks,
@@ -144,6 +144,21 @@ pub struct MoveArgs {
     pub formats: Vec<String>,
     #[arg(long = "glob")]
     pub glob: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct MetadataArgs {
+    pub identifier: String,
+    #[arg(long = "set", value_name = "KEY=VALUE")]
+    pub set: Vec<String>,
+    #[arg(long = "metadata-file", value_name = "FILE")]
+    pub metadata_file: Option<PathBuf>,
+    #[arg(long = "target", default_value = "metadata")]
+    pub target: String,
+    #[arg(long = "priority")]
+    pub priority: Option<i32>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -246,12 +261,18 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
         Command::Download(args) => crate::domains::transfer::download(ctx, &args),
         Command::Flag => crate::domains::account::flag(ctx),
         Command::List { identifier } => crate::domains::metadata::list(ctx, &identifier),
-        Command::Metadata { identifier } => crate::domains::metadata::metadata(ctx, &identifier),
+        Command::Metadata(args) => crate::domains::metadata::metadata(ctx, &args),
         Command::Move(args) => crate::domains::transfer::move_item(ctx, &args),
         Command::Reviews => crate::domains::account::reviews(ctx),
-        Command::Search { query, rows, page } => crate::domains::metadata::search(
+        Command::Search {
+            query,
+            rows,
+            page,
+            pages,
+        } => crate::domains::metadata::search(
             ctx,
             &crate::domains::metadata::SearchQuery { query, rows, page },
+            pages,
         ),
         Command::Simplelists => crate::domains::account::simplelists(ctx),
         Command::Tasks => crate::domains::account::tasks(ctx),
@@ -292,12 +313,41 @@ mod tests {
             "10",
             "--page",
             "2",
+            "--pages",
+            "3",
         ]);
         match cli.command.expect("command") {
-            super::Command::Search { query, rows, page } => {
+            super::Command::Search {
+                query,
+                rows,
+                page,
+                pages,
+            } => {
                 assert_eq!(query, "collection:test");
                 assert_eq!(rows, 10);
                 assert_eq!(page, 2);
+                assert_eq!(pages, 3);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn parses_metadata_set() {
+        let cli = Cli::parse_from([
+            "ria",
+            "metadata",
+            "example-item",
+            "--set",
+            "title=Example",
+            "--target",
+            "metadata",
+        ]);
+        match cli.command.expect("command") {
+            super::Command::Metadata(args) => {
+                assert_eq!(args.identifier, "example-item");
+                assert_eq!(args.set, vec!["title=Example"]);
+                assert_eq!(args.target, "metadata");
             }
             _ => panic!("unexpected command"),
         }

@@ -30,6 +30,66 @@
 - [x] Add integration test for metadata list success (mock server).
 - [x] Add integration test for metadata error status (mock server).
 - [x] Add CLI test for search argument parsing.
+- [x] Add `--pages` option for multi-page searches.
+- [x] Pass pagination count into search handler.
+- [x] Add pagination loop over search pages.
+- [x] Compute page offsets from base page.
+- [x] Reuse search URL builder for each page.
+- [x] Collect identifiers across multiple pages.
+- [x] Deduplicate identifiers across pages.
+- [x] Add helper to dedupe identifier lists.
+- [x] Aggregate JSON responses for paged searches.
+- [x] Emit JSON payload with pages + identifiers.
+- [x] Emit JSON payload with per-page responses.
+- [x] Emit human output for paged identifiers.
+- [x] Emit raw output for each page response.
+- [x] Ensure pages count is at least 1.
+- [x] Keep empty query validation for paged searches.
+- [x] Add search CLI parsing test for `--pages`.
+- [x] Preserve search rows setting across pages.
+- [x] Preserve search query string across pages.
+- [x] Preserve search output mode across pages.
+- [x] Use existing parse_search_identifiers per page.
+- [x] Avoid duplicate identifiers in paged JSON output.
+- [x] Build search payload with total page count.
+- [x] Append raw page responses in raw mode.
+- [x] Append identifiers in human mode without extra paging text.
+- [x] Use HashSet to track seen identifiers.
+- [x] Add paged search response collection.
+- [x] Add paged search identifier collection.
+- [x] Ensure paged search works with single page.
+- [x] Add paged search response list to JSON output.
+- [x] Add search pagination support without new dependencies.
+- [x] Add metadata CLI flags for setting fields.
+- [x] Add metadata CLI flag for metadata file input.
+- [x] Add metadata CLI flag for target selection.
+- [x] Add metadata CLI flag for priority override.
+- [x] Add metadata CLI flag for dry-run mode.
+- [x] Route metadata command to update when flags provided.
+- [x] Keep metadata GET behavior when no update flags supplied.
+- [x] Load metadata updates from JSON file input.
+- [x] Load metadata updates from TOML file input.
+- [x] Parse `KEY=VALUE` metadata updates from CLI.
+- [x] Merge file-based metadata with CLI overrides.
+- [x] Validate metadata identifier before updates.
+- [x] Validate metadata target is non-empty.
+- [x] Fetch current metadata before patching.
+- [x] Build JSON patch operations for metadata updates.
+- [x] Use replace op when field already exists.
+- [x] Use add op when field is missing.
+- [x] Support metadata updates against non-default targets.
+- [x] Build metadata write form payload with auth.
+- [x] Add metadata update dry-run output.
+- [x] Post metadata updates to write API.
+- [x] Parse metadata update response JSON.
+- [x] Add HTTP form-post helper for metadata writes.
+- [x] Require access/secret keys for metadata updates.
+- [x] Include priority in metadata write payload.
+- [x] Add tests for metadata key parsing.
+- [x] Add tests for metadata file parsing.
+- [x] Add tests for metadata patch generation.
+- [x] Add CLI test for metadata update flags.
+- [x] Emit metadata dry-run JSON output.
 - [ ] Implement metadata set/patch operations.
 - [ ] Support metadata file upload.
 - [ ] Implement search pagination beyond single page.

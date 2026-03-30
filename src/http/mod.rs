@@ -195,6 +195,43 @@ impl HttpClient {
         })
     }
 
+    #[instrument(skip(self, form, headers))]
+    pub fn post_form(
+        &self,
+        url: &str,
+        form: &[(String, String)],
+        headers: &[(String, String)],
+    ) -> Result<String> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let encoded = form_urlencode(form);
+        let mut request = self
+            .client
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(encoded);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
     pub fn api_base(&self) -> &str {
         &self.config.api_base
     }
@@ -257,6 +294,14 @@ impl HttpClient {
             .max(DEFAULT_RETRY_BACKOFF_MS);
         std::thread::sleep(Duration::from_millis(delay_ms));
     }
+}
+
+fn form_urlencode(form: &[(String, String)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (key, value) in form {
+        serializer.append_pair(key, value);
+    }
+    serializer.finish()
 }
 
 pub fn config_from_settings(settings: &Config) -> HttpClientConfig {

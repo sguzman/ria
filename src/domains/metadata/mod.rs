@@ -1,8 +1,9 @@
 use serde_json::Value;
+use std::collections::HashSet;
 use tracing::{info, instrument};
 use url::Url;
 
-use crate::cli::AppContext;
+use crate::cli::{AppContext, MetadataArgs};
 use crate::errors::{Error, Result};
 use crate::output::OutputFormat;
 use crate::utils;
@@ -23,23 +24,95 @@ pub fn list(ctx: &AppContext, identifier: &str) -> Result<()> {
     output_list(ctx, &files, &json, &raw)
 }
 
+#[instrument(skip(ctx, args))]
+pub fn metadata(ctx: &AppContext, args: &MetadataArgs) -> Result<()> {
+    if args.set.is_empty() && args.metadata_file.is_none() {
+        return metadata_get(ctx, &args.identifier);
+    }
+    metadata_update(ctx, args)
+}
+
 #[instrument(skip(ctx))]
-pub fn metadata(ctx: &AppContext, identifier: &str) -> Result<()> {
+pub fn search(ctx: &AppContext, query: &SearchQuery, pages: u32) -> Result<()> {
+    if query.query.trim().is_empty() {
+        return Err(Error::message("search query must not be empty"));
+    }
+    let pages = pages.max(1);
+    let mut identifiers = Vec::new();
+    let mut responses = Vec::new();
+    let mut raw_pages = Vec::new();
+    for offset in 0..pages {
+        let page_query = SearchQuery {
+            query: query.query.clone(),
+            rows: query.rows,
+            page: query.page + offset,
+        };
+        let url = search_url(ctx, &page_query)?;
+        let (raw, json) = fetch_json(ctx, &url)?;
+        identifiers.extend(parse_search_identifiers(&json));
+        responses.push(json);
+        raw_pages.push(raw);
+    }
+    let identifiers = dedupe_identifiers(identifiers);
+    match ctx.output.policy().format {
+        OutputFormat::Human => {
+            for identifier in &identifiers {
+                ctx.output.write_line(identifier)?;
+            }
+            Ok(())
+        }
+        OutputFormat::Json => {
+            let payload = serde_json::json!({
+                "pages": pages,
+                "identifiers": identifiers,
+                "responses": responses,
+            });
+            ctx.output.write_json(&payload)?;
+            Ok(())
+        }
+        OutputFormat::Raw => {
+            for raw in raw_pages {
+                ctx.output.write_line(&raw)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[instrument(skip(ctx))]
+fn metadata_get(ctx: &AppContext, identifier: &str) -> Result<()> {
     validate_identifier(identifier)?;
     let url = metadata_url(ctx, identifier)?;
     let (raw, json) = fetch_json(ctx, &url)?;
     output_value(ctx, &json, &raw)
 }
 
-#[instrument(skip(ctx))]
-pub fn search(ctx: &AppContext, query: &SearchQuery) -> Result<()> {
-    if query.query.trim().is_empty() {
-        return Err(Error::message("search query must not be empty"));
+#[instrument(skip(ctx, args))]
+fn metadata_update(ctx: &AppContext, args: &MetadataArgs) -> Result<()> {
+    validate_identifier(&args.identifier)?;
+    let updates = load_metadata_updates(args)?;
+    if updates.is_empty() {
+        return Err(Error::message("no metadata updates provided"));
     }
-    let url = search_url(ctx, query)?;
-    let (raw, json) = fetch_json(ctx, &url)?;
-    let identifiers = parse_search_identifiers(&json);
-    output_list(ctx, &identifiers, &json, &raw)
+
+    let target = args.target.trim();
+    if target.is_empty() {
+        return Err(Error::message("metadata target must not be empty"));
+    }
+
+    let url = metadata_url(ctx, &args.identifier)?;
+    let (_, current) = fetch_json(ctx, &url)?;
+    let patch = build_metadata_patch(&current, target, &updates)?;
+    let body = build_metadata_form(&patch, target, args.priority, &ctx.config)?;
+
+    if args.dry_run {
+        return output_metadata_dry_run(ctx, &patch, target, &body);
+    }
+
+    let response = ctx.http.post_form(&url, &body, &[])?;
+    let json: Value = serde_json::from_str(&response)
+        .map_err(|err| Error::message(format!("failed to parse metadata response: {err}")))?;
+    output_value(ctx, &json, &response)
 }
 
 fn validate_identifier(identifier: &str) -> Result<()> {
@@ -64,6 +137,150 @@ fn fetch_json(ctx: &AppContext, url: &str) -> Result<(String, Value)> {
 fn metadata_url(ctx: &AppContext, identifier: &str) -> Result<String> {
     let base = ctx.http.metadata_base().trim_end_matches('/');
     Ok(format!("{base}/{identifier}"))
+}
+
+fn load_metadata_updates(args: &MetadataArgs) -> Result<Vec<(String, Value)>> {
+    let mut updates = Vec::new();
+    if let Some(path) = args.metadata_file.as_deref() {
+        let file_updates = load_metadata_file(path)?;
+        for (key, value) in file_updates {
+            updates.push((key, value));
+        }
+    }
+    for entry in &args.set {
+        let (key, value) = parse_kv(entry)?;
+        updates.push((key, Value::String(value)));
+    }
+    Ok(updates)
+}
+
+fn parse_kv(input: &str) -> Result<(String, String)> {
+    let mut parts = input.splitn(2, '=');
+    let key = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Error::message("metadata key must not be empty"))?;
+    let value = parts
+        .next()
+        .map(str::to_string)
+        .ok_or_else(|| Error::message("metadata value must not be empty"))?;
+    Ok((key.to_string(), value))
+}
+
+fn load_metadata_file(path: &std::path::Path) -> Result<Vec<(String, Value)>> {
+    let raw = std::fs::read_to_string(path)?;
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let value = match ext.as_str() {
+        "json" => serde_json::from_str::<Value>(&raw)
+            .map_err(|err| Error::message(format!("invalid JSON metadata: {err}")))?,
+        "toml" => {
+            let toml_value: toml::Value = toml::from_str(&raw)
+                .map_err(|err| Error::message(format!("invalid TOML metadata: {err}")))?;
+            serde_json::to_value(toml_value)
+                .map_err(|err| Error::message(format!("invalid TOML metadata: {err}")))? 
+        }
+        _ => {
+            return Err(Error::message(format!(
+                "unsupported metadata file extension: {}",
+                path.display()
+            )))
+        }
+    };
+    let obj = value.as_object().ok_or_else(|| {
+        Error::message("metadata file must contain a JSON/TOML object")
+    })?;
+    Ok(obj
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.clone()))
+        .collect())
+}
+
+fn build_metadata_patch(
+    current: &Value,
+    target: &str,
+    updates: &[(String, Value)],
+) -> Result<Value> {
+    let metadata_obj = match target {
+        "metadata" => current
+            .get("metadata")
+            .and_then(|value| value.as_object())
+            .ok_or_else(|| Error::message("metadata response missing metadata field"))?,
+        _ => current
+            .as_object()
+            .ok_or_else(|| Error::message("metadata response missing fields"))?,
+    };
+    let mut patch = Vec::new();
+    for (key, value) in updates {
+        let path = format!("/{target}/{key}");
+        let op = if metadata_obj.contains_key(key) { "replace" } else { "add" };
+        patch.push(serde_json::json!({
+            "op": op,
+            "path": path,
+            "value": value,
+        }));
+    }
+    Ok(Value::Array(patch))
+}
+
+fn build_metadata_form(
+    patch: &Value,
+    target: &str,
+    priority: Option<i32>,
+    config: &crate::config::Config,
+) -> Result<Vec<(String, String)>> {
+    let access = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.access_key.as_deref())
+        .ok_or_else(|| Error::message("missing access key for metadata update"))?;
+    let secret = config
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.secret_key.as_deref())
+        .ok_or_else(|| Error::message("missing secret key for metadata update"))?;
+    let priority = priority.unwrap_or(-5);
+    let patch_json = serde_json::to_string(patch)
+        .map_err(|err| Error::message(format!("failed to serialize patch: {err}")))?;
+    Ok(vec![
+        ("-patch".to_string(), patch_json),
+        ("-target".to_string(), target.to_string()),
+        ("priority".to_string(), priority.to_string()),
+        ("access".to_string(), access.to_string()),
+        ("secret".to_string(), secret.to_string()),
+    ])
+}
+
+fn output_metadata_dry_run(
+    ctx: &AppContext,
+    patch: &Value,
+    target: &str,
+    form: &[(String, String)],
+) -> Result<()> {
+    match ctx.output.policy().format {
+        OutputFormat::Json => {
+            let value = serde_json::json!({
+                "dry_run": true,
+                "target": target,
+                "patch": patch,
+                "form": form,
+            });
+            ctx.output.write_json(&value)?;
+            Ok(())
+        }
+        _ => {
+            ctx.output.write_line("Metadata dry-run")?;
+            ctx.output
+                .write_line(&format!("Target: {target}"))?;
+            ctx.output
+                .write_line(&format!("Patch operations: {}", patch.as_array().map(|v| v.len()).unwrap_or(0)))?;
+            Ok(())
+        }
+    }
 }
 
 fn search_url(ctx: &AppContext, query: &SearchQuery) -> Result<String> {
@@ -105,6 +322,17 @@ fn parse_search_identifiers(value: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn dedupe_identifiers(items: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut output = Vec::new();
+    for item in items {
+        if seen.insert(item.clone()) {
+            output.push(item);
+        }
+    }
+    output
 }
 
 fn output_list(
@@ -153,6 +381,7 @@ mod tests {
     use super::*;
     use httpmock::Method::GET;
     use httpmock::MockServer;
+    use tempfile::TempDir;
 
     #[test]
     fn builds_search_url() {
@@ -261,5 +490,29 @@ mod tests {
 
         let result = list(&ctx, "bad-item");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_metadata_kv_pairs() {
+        let (key, value) = parse_kv("title=Example").expect("pair");
+        assert_eq!(key, "title");
+        assert_eq!(value, "Example");
+    }
+
+    #[test]
+    fn loads_metadata_file_json() {
+        let dir = TempDir::new().expect("temp");
+        let path = dir.path().join("metadata.json");
+        std::fs::write(&path, r#"{ "title": "Example" }"#).expect("write");
+        let updates = load_metadata_file(&path).expect("updates");
+        assert!(updates.iter().any(|(key, _)| key == "title"));
+    }
+
+    #[test]
+    fn builds_metadata_patch_ops() {
+        let current = serde_json::json!({ "metadata": { "title": "Old" } });
+        let updates = vec![("title".to_string(), Value::String("New".into()))];
+        let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
+        assert!(patch.as_array().unwrap()[0]["op"] == "replace");
     }
 }
