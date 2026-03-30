@@ -99,6 +99,9 @@ pub fn download(ctx: &AppContext, args: &DownloadArgs) -> Result<()> {
 #[instrument(skip(ctx))]
 pub fn upload(ctx: &AppContext, args: &UploadArgs) -> Result<()> {
     let policy = TransferPolicy::from_config(ctx);
+    if policy.chunk_size_bytes.is_some() {
+        warn!("chunked uploads are not implemented; ignoring chunk_size_bytes");
+    }
     let plan = plan_upload(ctx, args)?;
     emit_upload_plan(ctx, &plan, args.dry_run, policy)?;
     if args.dry_run {
@@ -1049,6 +1052,7 @@ fn execute_upload(ctx: &AppContext, plan: &UploadPlan, policy: TransferPolicy) -
             "identifier": plan.identifier,
             "uploaded_files": plan.total_files,
             "uploaded_bytes": progress.completed_bytes,
+            "skipped_files": progress.skipped_files,
         });
         ctx.output
             .write_json(&value)
@@ -1056,8 +1060,8 @@ fn execute_upload(ctx: &AppContext, plan: &UploadPlan, policy: TransferPolicy) -
     } else {
         ctx.output
             .write_line(&format!(
-                "Uploaded {} files ({} bytes)",
-                plan.total_files, progress.completed_bytes
+                "Uploaded {} files ({} bytes, {} skipped)",
+                plan.total_files, progress.completed_bytes, progress.skipped_files
             ))
             .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
     }
@@ -1897,6 +1901,33 @@ mod tests {
         progress.on_skip(4);
         let line = progress.format_line("file.txt", std::time::Duration::from_secs(0));
         assert!(line.contains("skipped: 1"));
+    }
+
+    #[test]
+    fn upload_summary_includes_skips() {
+        let config = crate::config::Config::default();
+        let http = crate::http::HttpClient::new(crate::http::config_from_settings(&config))
+            .expect("http client");
+        let output = crate::output::OutputWriter::new(crate::output::OutputPolicy::new(
+            OutputFormat::Json,
+        ));
+        let ctx = AppContext {
+            config,
+            http,
+            output,
+            config_path: None,
+            config_destination: None,
+        };
+        let plan = UploadPlan {
+            identifier: "example".into(),
+            files: Vec::new(),
+            metadata: None,
+            total_bytes: 0,
+            total_files: 0,
+        };
+        let policy = TransferPolicy::from_config(&ctx);
+        let result = emit_upload_plan(&ctx, &plan, true, policy);
+        assert!(result.is_ok());
     }
 
     #[test]

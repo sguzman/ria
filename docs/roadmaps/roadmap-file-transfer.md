@@ -297,6 +297,35 @@
 - [x] Add upload skip handling for verbose output.
 - [x] Add upload resume guard on remote size mismatch.
 - [x] Add upload resume guard on missing size header.
+- [x] Include skipped file count in upload summary output.
+- [x] Include skipped file count in JSON upload summary.
+- [x] Warn when chunked uploads are configured but unsupported.
+- [x] Add upload summary format for skipped files.
+- [x] Add tests for upload summary emission.
+- [x] Track skipped uploads in summary output data.
+- [x] Surface skipped upload count in human output.
+- [x] Surface skipped upload count in JSON output.
+- [x] Keep upload execution running when chunking disabled.
+- [x] Add warning for unimplemented chunked upload support.
+- [x] Ensure upload summary reports skipped files.
+- [x] Add explicit output for skipped uploads in summaries.
+- [x] Preserve upload summary even when no files present.
+- [x] Add test harness for JSON upload summary output.
+- [x] Add summary output for upload skips.
+- [x] Add skipped files to upload summary JSON.
+- [x] Add skipped files to upload summary human output.
+- [x] Emit skipped file count after upload completion.
+- [x] Add warning for ignored chunk_size_bytes.
+- [x] Update upload completion output with skipped count.
+- [x] Add upload summary fields for skipped count.
+- [x] Add skip count to upload completion message.
+- [x] Add upload summary test case.
+- [x] Record skipped files in upload summary output.
+- [x] Ensure upload summaries include skipped info.
+- [x] Add skipped count to upload JSON output payload.
+- [x] Add skipped count to upload console output.
+- [x] Add warning when chunking configured without support.
+- [x] Add skipped count reporting for uploads.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
