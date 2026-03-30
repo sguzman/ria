@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+use sha1::{Digest, Sha1};
 use tracing::{info, instrument, warn};
 use url::Url;
 
@@ -15,6 +16,8 @@ use crate::utils::{self, GlobMatcher};
 struct TransferFile {
     name: String,
     size: Option<u64>,
+    md5: Option<String>,
+    sha1: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +25,8 @@ struct PlannedFile {
     name: String,
     url: String,
     size: Option<u64>,
+    md5: Option<String>,
+    sha1: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +166,8 @@ fn plan_download(ctx: &AppContext, args: &DownloadArgs) -> Result<DownloadPlan> 
             name: file.name.clone(),
             url: build_file_url(ctx.http.s3_base(), &args.identifier, &file.name)?,
             size: file.size,
+            md5: file.md5.clone(),
+            sha1: file.sha1.clone(),
         });
     }
     planned.sort_by(|a, b| a.name.cmp(&b.name));
@@ -209,6 +216,14 @@ fn execute_download(ctx: &AppContext, plan: &DownloadPlan, policy: TransferPolic
         );
 
         let bytes = ctx.http.get_bytes(&file.url)?;
+        if policy.checksum_verify {
+            verify_checksums(
+                &file.name,
+                &bytes,
+                file.md5.as_deref(),
+                file.sha1.as_deref(),
+            )?;
+        }
         fs::write(&dest_path, &bytes).map_err(|err| {
             Error::message(format!(
                 "failed to write {}: {err}",
@@ -243,6 +258,8 @@ fn emit_plan(
                         "name": file.name,
                         "url": file.url,
                         "size": file.size,
+                        "md5": file.md5,
+                        "sha1": file.sha1,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -865,6 +882,62 @@ fn should_skip_existing(path: &Path, expected_size: Option<u64>, resume: bool) -
     Ok(false)
 }
 
+fn verify_checksums(
+    name: &str,
+    bytes: &[u8],
+    md5_expected: Option<&str>,
+    sha1_expected: Option<&str>,
+) -> Result<()> {
+    if md5_expected.is_none() && sha1_expected.is_none() {
+        warn!(file = %name, "checksum verification enabled but metadata missing checksums");
+        return Ok(());
+    }
+
+    if let Some(expected) = md5_expected {
+        let computed = md5_hex(bytes);
+        if !equals_ignore_case(&computed, expected) {
+            return Err(Error::message(format!(
+                "md5 checksum mismatch for {name}"
+            )));
+        }
+    }
+
+    if let Some(expected) = sha1_expected {
+        let computed = sha1_hex(bytes);
+        if !equals_ignore_case(&computed, expected) {
+            return Err(Error::message(format!(
+                "sha1 checksum mismatch for {name}"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn md5_hex(bytes: &[u8]) -> String {
+    let digest = md5::compute(bytes);
+    bytes_to_hex(&digest.0)
+}
+
+fn sha1_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    bytes_to_hex(&digest)
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+fn equals_ignore_case(left: &str, right: &str) -> bool {
+    left.eq_ignore_ascii_case(right)
+}
+
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
     let validate = ctx
         .config
@@ -904,7 +977,20 @@ fn parse_metadata_files(metadata: &Value) -> Result<Vec<TransferFile>> {
             .get("size")
             .and_then(|value| value.as_str())
             .and_then(|value| value.parse::<u64>().ok());
-        results.push(TransferFile { name, size });
+        let md5 = file
+            .get("md5")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        let sha1 = file
+            .get("sha1")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        results.push(TransferFile {
+            name,
+            size,
+            md5,
+            sha1,
+        });
     }
     if results.is_empty() {
         return Err(Error::message("metadata response contained no files"));
@@ -1001,8 +1087,8 @@ mod tests {
     fn sample_metadata() -> Value {
         json!({
             "files": [
-                { "name": "file-one.txt", "size": "12" },
-                { "name": "nested/file-two.txt", "size": "24" },
+                { "name": "file-one.txt", "size": "12", "md5": "098f6bcd4621d373cade4e832627b4f6" },
+                { "name": "nested/file-two.txt", "size": "24", "sha1": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3" },
                 { "name": "image.jpg" }
             ]
         })
@@ -1028,6 +1114,11 @@ mod tests {
         assert_eq!(files.len(), 3);
         assert_eq!(files[0].name, "file-one.txt");
         assert_eq!(files[0].size, Some(12));
+        assert_eq!(
+            files[0].md5.as_deref(),
+            Some("098f6bcd4621d373cade4e832627b4f6")
+        );
+        assert_eq!(files[1].sha1.as_deref(), Some("a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"));
     }
 
     #[test]
@@ -1244,5 +1335,36 @@ mod tests {
         progress.on_complete(Some(4));
         let line = progress.format_line("file.txt");
         assert!(line.contains("40.0%"));
+    }
+
+    #[test]
+    fn verifies_md5_checksum() {
+        let bytes = b"test";
+        verify_checksums(
+            "file.txt",
+            bytes,
+            Some("098f6bcd4621d373cade4e832627b4f6"),
+            None,
+        )
+        .expect("checksum");
+    }
+
+    #[test]
+    fn verifies_sha1_checksum() {
+        let bytes = b"test";
+        verify_checksums(
+            "file.txt",
+            bytes,
+            None,
+            Some("a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"),
+        )
+        .expect("checksum");
+    }
+
+    #[test]
+    fn fails_on_checksum_mismatch() {
+        let bytes = b"test";
+        let err = verify_checksums("file.txt", bytes, Some("deadbeef"), None).unwrap_err();
+        assert!(err.to_string().contains("md5 checksum mismatch"));
     }
 }

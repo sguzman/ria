@@ -120,6 +120,36 @@
 - [x] Respect resume policy during download execution.
 - [x] Use output verbosity to toggle progress output.
 - [x] Surface checksum/chunk settings in plan outputs.
+- [x] Add checksum fields to transfer file model.
+- [x] Add checksum fields to planned download entries.
+- [x] Parse md5 checksums from metadata files.
+- [x] Parse sha1 checksums from metadata files.
+- [x] Add checksum verification helper for downloads.
+- [x] Add md5 hashing helper for downloads.
+- [x] Add sha1 hashing helper for downloads.
+- [x] Add hex encoding helper for checksum output.
+- [x] Add case-insensitive checksum comparison helper.
+- [x] Verify md5 checksum when enabled.
+- [x] Verify sha1 checksum when enabled.
+- [x] Warn when checksum verification enabled but metadata lacks checksums.
+- [x] Include checksums in download plan JSON output.
+- [x] Surface checksum mismatch as structured error.
+- [x] Add tests for md5 checksum verification.
+- [x] Add tests for sha1 checksum verification.
+- [x] Add tests for checksum mismatch handling.
+- [x] Add tests for checksum parsing in metadata.
+- [x] Run checksum verification before writing downloaded files.
+- [x] Gate checksum verification on config policy.
+- [x] Add md5 crate dependency for hashing.
+- [x] Add sha1 crate dependency for hashing.
+- [x] Halt download execution on checksum failure.
+- [x] Emit tracing warning for missing checksum metadata.
+- [x] Add md5 hex formatting helper.
+- [x] Add sha1 hex formatting helper.
+- [x] Add generic bytes-to-hex helper.
+- [x] Add checksum compare helper.
+- [x] Include checksum fixtures in sample metadata test data.
+- [x] Use checksum helpers during download verification.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
