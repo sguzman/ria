@@ -1,0 +1,32 @@
+# Tranche 2 (30 Items)
+
+- [x] Add `directories` dependency for platform config discovery.
+- [x] Add `tempfile` dev dependency for config tests.
+- [x] Add `NotImplemented` error variant for command stubs.
+- [x] Add helper for constructing not-implemented errors.
+- [x] Implement default config path using `ProjectDirs`.
+- [x] Prefer default config path only when it exists on disk.
+- [x] Add config search-paths helper for diagnostics.
+- [x] Capture `RIA_CONFIG` env path for search-path reporting.
+- [x] Log config search paths in CLI startup.
+- [x] Log resolved config path alongside loaded config.
+- [x] Add CLI dispatch function for subcommands.
+- [x] Wire dispatch to per-domain handlers.
+- [x] Add account domain command handler stub.
+- [x] Add metadata domain command handler stub.
+- [x] Add transfer domain command handler stub.
+- [x] Emit tracing warnings for unimplemented account commands.
+- [x] Emit tracing warnings for unimplemented metadata commands.
+- [x] Emit tracing warnings for unimplemented transfer commands.
+- [x] Return structured not-implemented errors from domain handlers.
+- [x] Preserve CLI error behavior with non-zero exits.
+- [x] Add config unit test for `RIA_CONFIG` override.
+- [x] Add config unit test for TOML parsing.
+- [x] Keep config module independent of CLI parsing crates.
+- [x] Keep CLI module independent of TOML parsing details.
+- [x] Ensure config loader handles missing config path gracefully.
+- [x] Ensure env override beats default path resolution.
+- [x] Keep domain modules thin and domain-focused.
+- [x] Keep warnings consistent across command stubs.
+- [x] Maintain structured logging context for dispatch.
+- [x] Maintain cross-module compilation with new deps.

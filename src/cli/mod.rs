@@ -1,3 +1,4 @@
+use std::env;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -5,6 +6,7 @@ use tracing::info;
 
 use crate::config::{self, ConfigOverrides};
 use crate::errors::{Error, Result};
+use crate::domains;
 use crate::telemetry;
 
 #[derive(Debug, Parser)]
@@ -64,9 +66,11 @@ pub fn run() -> Result<()> {
     telemetry::init(log_level)?;
     info!(?log_level, "telemetry initialized");
 
+    let env_path = env::var_os("RIA_CONFIG").map(PathBuf::from);
     let config_path = config::resolve_config_path(cli.config_file.clone());
     let mut config = config::load(config_path.as_deref())?;
 
+    let search_paths = config::config_search_paths(cli.config_file.as_deref(), env_path.as_deref());
     let overrides = ConfigOverrides {
         logging_level: log_level.map(str::to_string),
         insecure: cli.insecure.then_some(true),
@@ -75,13 +79,30 @@ pub fn run() -> Result<()> {
     };
 
     config.apply_overrides(overrides);
-    info!(?config_path, ?config, "config loaded");
+    info!(?search_paths, ?config_path, ?config, "config loaded");
 
     match cli.command {
-        Some(command) => {
-            info!(?command, "dispatching command");
-            Ok(())
-        }
+        Some(command) => dispatch(command),
         None => Err(Error::MissingCommand),
+    }
+}
+
+fn dispatch(command: Command) -> Result<()> {
+    info!(?command, "dispatching command");
+    match command {
+        Command::Account => domains::account::handle("account"),
+        Command::Configure => domains::account::handle("configure"),
+        Command::Copy => domains::transfer::handle("copy"),
+        Command::Delete => domains::transfer::handle("delete"),
+        Command::Download => domains::transfer::handle("download"),
+        Command::Flag => domains::account::handle("flag"),
+        Command::List => domains::metadata::handle("list"),
+        Command::Metadata => domains::metadata::handle("metadata"),
+        Command::Move => domains::transfer::handle("move"),
+        Command::Reviews => domains::account::handle("reviews"),
+        Command::Search => domains::metadata::handle("search"),
+        Command::Simplelists => domains::account::handle("simplelists"),
+        Command::Tasks => domains::account::handle("tasks"),
+        Command::Upload => domains::transfer::handle("upload"),
     }
 }

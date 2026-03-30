@@ -1,7 +1,7 @@
 # Roadmap: TOML Config Control Pane
 
 - [x] Resolve config path from CLI flag and `RIA_CONFIG` environment variable.
-- [ ] Define default config file paths (XDG, platform-specific).
+- [x] Define default config file paths (XDG, platform-specific via `directories`).
 - [x] Add initial TOML config structs and parsing.
 - [ ] Specify a full TOML schema covering all CLI flags and defaults.
 - [ ] Add logging policies: level, format, sinks, sampling, and per-module overrides.

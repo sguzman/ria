@@ -8,4 +8,5 @@
 - [ ] Add `tracing` instrumentation across HTTP requests.
 - [x] Implement structured error types and user-friendly exit codes.
 - [x] Add `--help` and subcommand help text aligned with Python docs.
+- [x] Add command dispatch scaffolding with not-implemented errors.
 - [ ] Add minimal smoke tests for CLI parsing and config merging.
