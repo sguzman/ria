@@ -61,3 +61,33 @@
 - [x] Add form-encoded HTTP helpers for PUT/DELETE.
 - [x] Add JSON POST helper for reviews submission.
 - [x] Add simplelists patch payload builder.
+- [x] Add helper for building review list params.
+- [x] Add helper for building review delete form.
+- [x] Validate review delete selector count.
+- [x] Add helper for building review submission payload.
+- [x] Add helper for building flag query params.
+- [x] Add helper for building tasks query params.
+- [x] Add helper for building simplelists patch payload.
+- [x] Add tests for review delete selector validation.
+- [x] Add tests for review payload building with stars.
+- [x] Add tests for flag param building.
+- [x] Add tests for tasks param defaults.
+- [x] Add tests for simplelists patch builder.
+- [x] Reuse helpers inside review handler.
+- [x] Reuse helpers inside flag handler.
+- [x] Reuse helpers inside tasks handler.
+- [x] Reuse helpers inside simplelists handler.
+- [x] Keep helper logic local to account domain.
+- [x] Add error when review delete selector missing.
+- [x] Add error when review delete selector ambiguous.
+- [x] Ensure tasks params include summary flag.
+- [x] Ensure tasks params include history flag.
+- [x] Ensure tasks params include catalog flag.
+- [x] Add review params helper unit test.
+- [x] Add simplelists patch helper unit test.
+- [x] Add tasks param helper unit test.
+- [x] Add flag param helper unit test.
+- [x] Add review delete form helper unit test.
+- [x] Add review payload helper unit test.
+- [x] Add helper for review list params.
+- [x] Add helper for review submission payload.

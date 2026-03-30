@@ -86,31 +86,16 @@ pub fn reviews(ctx: &AppContext, args: &ReviewsArgs) -> Result<()> {
         "{}/services/reviews.php",
         ctx.http.api_base().trim_end_matches('/')
     );
-    let mut params = vec![("identifier".to_string(), args.identifier.clone())];
+    let mut params = build_reviews_params(&args.identifier);
 
     if args.delete {
-        let mut form = Vec::new();
-        if let Some(value) = &args.username {
-            form.push(("username".to_string(), value.clone()));
-        }
-        if let Some(value) = &args.screenname {
-            form.push(("screenname".to_string(), value.clone()));
-        }
-        if let Some(value) = &args.itemname {
-            form.push(("itemname".to_string(), value.clone()));
-        }
+        let form = build_reviews_delete_form(args)?;
         let response = ctx.http.delete_form(&url, &params, &form, &[auth_header(&auth)])?;
         return output_json_or_raw(ctx, &response);
     }
 
     if let (Some(title), Some(body)) = (&args.title, &args.body) {
-        let mut payload = serde_json::json!({
-            "title": title,
-            "body": body,
-        });
-        if let Some(stars) = args.stars {
-            payload["stars"] = Value::from(stars);
-        }
+        let payload = build_reviews_payload(title, body, args.stars);
         let response = ctx.http.post_json(&url, &params, &payload, &[auth_header(&auth)])?;
         return output_json_or_raw(ctx, &response);
     }
@@ -126,10 +111,7 @@ pub fn flag(ctx: &AppContext, args: &FlagArgs) -> Result<()> {
         "{}/services/flags/admin.php",
         ctx.http.api_base().trim_end_matches('/')
     );
-    let mut params = vec![("identifier".to_string(), args.identifier.clone())];
-    if let Some(user) = &args.user {
-        params.push(("user".to_string(), user.clone()));
-    }
+    let mut params = build_flag_params(&args.identifier, args.user.as_deref());
     let headers = vec![("Accept".to_string(), "text/json".to_string())];
 
     if let Some(category) = &args.add {
@@ -191,22 +173,7 @@ pub fn tasks(ctx: &AppContext, args: &TasksArgs) -> Result<()> {
         "{}/services/tasks.php",
         ctx.http.api_base().trim_end_matches('/')
     );
-    let mut params = Vec::new();
-    if let Some(identifier) = &args.identifier {
-        params.push(("identifier".to_string(), identifier.clone()));
-    }
-    params.push((
-        "summary".to_string(),
-        if args.summary { "1" } else { "0" }.to_string(),
-    ));
-    params.push((
-        "history".to_string(),
-        args.history.unwrap_or(true).to_string(),
-    ));
-    params.push((
-        "catalog".to_string(),
-        args.catalog.unwrap_or(true).to_string(),
-    ));
+    let params = build_tasks_params(args);
     let response = ctx.http.get_with_params(&url, &params, &[auth_header(&auth)])?;
     output_json_or_raw(ctx, &response)
 }
@@ -267,12 +234,7 @@ fn submit_simplelist_patch(
         .list_name
         .as_deref()
         .ok_or_else(|| Error::message("list name is required"))?;
-    let patch = serde_json::json!({
-        "op": operation,
-        "parent": parent,
-        "list": list_name,
-        "notes": args.notes,
-    });
+    let patch = build_simplelist_patch(operation, parent, list_name, args.notes.as_deref());
     let url = format!(
         "{}/metadata/{}",
         ctx.http.api_base().trim_end_matches('/'),
@@ -304,6 +266,86 @@ fn split_low_auth(value: &str) -> Result<(&str, &str)> {
     Ok((access, secret))
 }
 
+fn build_reviews_params(identifier: &str) -> Vec<(String, String)> {
+    vec![("identifier".to_string(), identifier.to_string())]
+}
+
+fn build_reviews_delete_form(args: &ReviewsArgs) -> Result<Vec<(String, String)>> {
+    let mut form = Vec::new();
+    let mut count = 0;
+    if let Some(value) = &args.username {
+        form.push(("username".to_string(), value.clone()));
+        count += 1;
+    }
+    if let Some(value) = &args.screenname {
+        form.push(("screenname".to_string(), value.clone()));
+        count += 1;
+    }
+    if let Some(value) = &args.itemname {
+        form.push(("itemname".to_string(), value.clone()));
+        count += 1;
+    }
+    if count != 1 {
+        return Err(Error::message(
+            "delete review requires exactly one of username, screenname, or itemname",
+        ));
+    }
+    Ok(form)
+}
+
+fn build_reviews_payload(title: &str, body: &str, stars: Option<u8>) -> Value {
+    let mut payload = serde_json::json!({
+        "title": title,
+        "body": body,
+    });
+    if let Some(stars) = stars {
+        payload["stars"] = Value::from(stars);
+    }
+    payload
+}
+
+fn build_flag_params(identifier: &str, user: Option<&str>) -> Vec<(String, String)> {
+    let mut params = vec![("identifier".to_string(), identifier.to_string())];
+    if let Some(user) = user {
+        params.push(("user".to_string(), user.to_string()));
+    }
+    params
+}
+
+fn build_tasks_params(args: &TasksArgs) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    if let Some(identifier) = &args.identifier {
+        params.push(("identifier".to_string(), identifier.clone()));
+    }
+    params.push((
+        "summary".to_string(),
+        if args.summary { "1" } else { "0" }.to_string(),
+    ));
+    params.push((
+        "history".to_string(),
+        args.history.unwrap_or(true).to_string(),
+    ));
+    params.push((
+        "catalog".to_string(),
+        args.catalog.unwrap_or(true).to_string(),
+    ));
+    params
+}
+
+fn build_simplelist_patch(
+    operation: &str,
+    parent: &str,
+    list_name: &str,
+    notes: Option<&str>,
+) -> Value {
+    serde_json::json!({
+        "op": operation,
+        "parent": parent,
+        "list": list_name,
+        "notes": notes,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +355,53 @@ mod tests {
         let (access, secret) = split_low_auth("LOW access:secret").expect("split");
         assert_eq!(access, "access");
         assert_eq!(secret, "secret");
+    }
+
+    #[test]
+    fn builds_review_delete_form_requires_one_selector() {
+        let args = ReviewsArgs {
+            identifier: "item".into(),
+            list: false,
+            title: None,
+            body: None,
+            stars: None,
+            delete: true,
+            username: None,
+            screenname: None,
+            itemname: None,
+        };
+        let err = build_reviews_delete_form(&args).unwrap_err();
+        assert!(err.to_string().contains("requires exactly one"));
+    }
+
+    #[test]
+    fn builds_review_payload_with_stars() {
+        let payload = build_reviews_payload("Title", "Body", Some(5));
+        assert_eq!(payload["stars"], 5);
+    }
+
+    #[test]
+    fn builds_flag_params_with_user() {
+        let params = build_flag_params("item", Some("@user"));
+        assert!(params.iter().any(|(k, v)| k == "user" && v == "@user"));
+    }
+
+    #[test]
+    fn builds_tasks_params_defaults() {
+        let args = TasksArgs {
+            identifier: Some("item".into()),
+            summary: false,
+            history: None,
+            catalog: None,
+        };
+        let params = build_tasks_params(&args);
+        assert!(params.iter().any(|(k, v)| k == "history" && v == "true"));
+    }
+
+    #[test]
+    fn builds_simplelist_patch() {
+        let patch = build_simplelist_patch("set", "parent", "list", None);
+        assert_eq!(patch["op"], "set");
+        assert_eq!(patch["parent"], "parent");
     }
 }
