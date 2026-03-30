@@ -5,13 +5,14 @@
 - [x] Add initial TOML config structs and parsing.
 - [ ] Specify a full TOML schema covering all CLI flags and defaults.
 - [ ] Add logging policies: level, format, sinks, sampling, and per-module overrides.
-- [ ] Add network policies: timeouts, retries, backoff strategy, rate limits, concurrency.
+- [x] Add network policy fields: timeouts, retries, backoff, rate limits, concurrency.
 - [ ] Add TLS/security policies: verify certs, custom CA bundle, insecure toggle.
 - [ ] Add host and endpoint overrides for all services (API, S3, metadata).
 - [ ] Add user-agent policy: base string, suffix, and opt-out.
 - [ ] Add auth policies: key source order, profile selection, token caching.
 - [ ] Add file transfer policies: chunk size, checksum verification, resume behavior.
-- [ ] Add output policies: format default, paging, color, quiet/verbose switches.
+- [x] Add output policy for default format.
+- [ ] Add output policies for paging, color, quiet/verbose switches.
 - [ ] Add input policies: glob rules, identifier validation modes, stdin handling.
 - [ ] Add telemetry policies: tracing enablement, filters, and export targets.
 - [ ] Add compatibility policies: Python parity toggles and legacy behavior switches.

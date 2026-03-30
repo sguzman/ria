@@ -1,0 +1,32 @@
+# Tranche 3 (30 Items)
+
+- [x] Add output format parsing helper.
+- [x] Add output format display implementation.
+- [x] Add output format unit tests.
+- [x] Add output config section with default format.
+- [x] Add network config section with timeouts and retry policy fields.
+- [x] Add network config fields for rate limit and concurrency.
+- [x] Add CLI `--output` flag.
+- [x] Apply output format override from CLI.
+- [x] Validate output format at startup.
+- [x] Add config validation for zero timeouts.
+- [x] Add config validation for unknown output formats.
+- [x] Add config validation tests for output format.
+- [x] Add config default path search list helper.
+- [x] Log config search paths and resolved path together.
+- [x] Add HTTP client configuration struct.
+- [x] Map config settings into HTTP client configuration.
+- [x] Thread host/insecure settings into HTTP config.
+- [x] Thread timeout settings into HTTP config.
+- [x] Thread retry/backoff into HTTP config.
+- [x] Thread rate limit/concurrency into HTTP config.
+- [x] Thread user-agent suffix into HTTP config.
+- [x] Keep HTTP module free of concrete client dependency.
+- [x] Extend config overrides with output format.
+- [x] Ensure config validation runs after overrides.
+- [x] Keep output module independent of CLI parsing.
+- [x] Keep config module independent of HTTP client implementation.
+- [x] Preserve structured logging context in CLI.
+- [x] Maintain non-implemented command behavior.
+- [x] Keep config parsing and validation errors structured.
+- [x] Keep compilation passing with new config fields.

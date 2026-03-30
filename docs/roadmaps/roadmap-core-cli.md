@@ -9,4 +9,5 @@
 - [x] Implement structured error types and user-friendly exit codes.
 - [x] Add `--help` and subcommand help text aligned with Python docs.
 - [x] Add command dispatch scaffolding with not-implemented errors.
+- [x] Add `--output` flag and validate output format.
 - [ ] Add minimal smoke tests for CLI parsing and config merging.

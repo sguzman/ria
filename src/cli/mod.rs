@@ -31,6 +31,8 @@ pub struct Cli {
     pub host: Option<String>,
     #[arg(long = "user-agent-suffix", value_name = "STRING")]
     pub user_agent_suffix: Option<String>,
+    #[arg(long = "output", value_name = "FORMAT")]
+    pub output: Option<String>,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -76,9 +78,11 @@ pub fn run() -> Result<()> {
         insecure: cli.insecure.then_some(true),
         host: cli.host.clone(),
         user_agent_suffix: cli.user_agent_suffix.clone(),
+        output_format: cli.output.clone(),
     };
 
     config.apply_overrides(overrides);
+    crate::config::validate(&config)?;
     info!(?search_paths, ?config_path, ?config, "config loaded");
 
     match cli.command {

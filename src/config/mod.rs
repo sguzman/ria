@@ -9,6 +9,8 @@ use crate::errors::Result;
 pub struct Config {
     pub logging: Option<LoggingConfig>,
     pub general: Option<GeneralConfig>,
+    pub network: Option<NetworkConfig>,
+    pub output: Option<OutputConfig>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -23,12 +25,28 @@ pub struct GeneralConfig {
     pub user_agent_suffix: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct NetworkConfig {
+    pub timeout_secs: Option<u64>,
+    pub connect_timeout_secs: Option<u64>,
+    pub retry_max: Option<u32>,
+    pub retry_backoff_ms: Option<u64>,
+    pub rate_limit_per_sec: Option<u32>,
+    pub concurrency: Option<u32>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct OutputConfig {
+    pub format: Option<String>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ConfigOverrides {
     pub logging_level: Option<String>,
     pub insecure: Option<bool>,
     pub host: Option<String>,
     pub user_agent_suffix: Option<String>,
+    pub output_format: Option<String>,
 }
 
 pub fn resolve_config_path(cli_path: Option<PathBuf>) -> Option<PathBuf> {
@@ -93,6 +111,10 @@ impl Config {
         if let Some(user_agent_suffix) = overrides.user_agent_suffix {
             self.general_mut().user_agent_suffix = Some(user_agent_suffix);
         }
+
+        if let Some(output_format) = overrides.output_format {
+            self.output_mut().format = Some(output_format);
+        }
     }
 
     fn logging_mut(&mut self) -> &mut LoggingConfig {
@@ -102,6 +124,41 @@ impl Config {
     fn general_mut(&mut self) -> &mut GeneralConfig {
         self.general.get_or_insert_with(GeneralConfig::default)
     }
+
+    fn output_mut(&mut self) -> &mut OutputConfig {
+        self.output.get_or_insert_with(OutputConfig::default)
+    }
+}
+
+pub fn validate(config: &Config) -> Result<()> {
+    if let Some(network) = &config.network {
+        if let Some(timeout) = network.timeout_secs {
+            if timeout == 0 {
+                return Err(crate::errors::Error::message(
+                    "network.timeout_secs must be greater than zero",
+                ));
+            }
+        }
+        if let Some(connect) = network.connect_timeout_secs {
+            if connect == 0 {
+                return Err(crate::errors::Error::message(
+                    "network.connect_timeout_secs must be greater than zero",
+                ));
+            }
+        }
+    }
+
+    if let Some(output) = &config.output {
+        if let Some(format) = output.format.as_deref() {
+            if crate::output::OutputFormat::parse(format).is_none() {
+                return Err(crate::errors::Error::message(format!(
+                    "unknown output format: {format}"
+                )));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -137,5 +194,17 @@ mod tests {
                 .and_then(|logging| logging.level.as_deref()),
             Some("info")
         );
+    }
+
+    #[test]
+    fn rejects_unknown_output_format() {
+        let config = Config {
+            output: Some(OutputConfig {
+                format: Some("wat".to_string()),
+            }),
+            ..Config::default()
+        };
+        let result = validate(&config);
+        assert!(result.is_err());
     }
 }
