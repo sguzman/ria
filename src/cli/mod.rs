@@ -7,7 +7,9 @@ use tracing::info;
 use crate::config::{self, ConfigOverrides};
 use crate::errors::{Error, Result};
 use crate::http;
+use crate::output::{self, OutputWriter};
 use crate::telemetry;
+use crate::utils;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -33,6 +35,18 @@ pub struct Cli {
     pub user_agent_suffix: Option<String>,
     #[arg(long = "output", value_name = "FORMAT")]
     pub output: Option<String>,
+    #[arg(long = "color", conflicts_with = "no_color")]
+    pub color: bool,
+    #[arg(long = "no-color", conflicts_with = "color")]
+    pub no_color: bool,
+    #[arg(long = "paging", conflicts_with = "no_paging")]
+    pub paging: bool,
+    #[arg(long = "no-paging", conflicts_with = "paging")]
+    pub no_paging: bool,
+    #[arg(short = 'q', long = "quiet")]
+    pub quiet: bool,
+    #[arg(short = 'v', long = "verbose")]
+    pub verbose: bool,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -53,6 +67,12 @@ pub enum Command {
     Simplelists,
     Tasks,
     Upload,
+}
+
+pub struct AppContext {
+    pub config: crate::config::Config,
+    pub http: http::HttpClient,
+    pub output: OutputWriter,
 }
 
 pub fn run() -> Result<()> {
@@ -78,10 +98,29 @@ pub fn run() -> Result<()> {
     info!(?search_paths, ?config_path, ?config, "config loaded");
 
     let http_config = http::config_from_settings(&config);
-    let _http_client = http::HttpClient::new(http_config)?;
+    let http_client = http::HttpClient::new(http_config)?;
+    let output_policy = output::policy_from_config(&config);
+    let output_writer = OutputWriter::new(output_policy);
+
+    if config
+        .input
+        .as_ref()
+        .and_then(|input| input.read_stdin)
+        .unwrap_or(false)
+        && !utils::stdin_is_terminal()
+    {
+        let stdin_data = utils::read_stdin()?;
+        info!(bytes = stdin_data.len(), "read stdin input");
+    }
+
+    let ctx = AppContext {
+        config,
+        http: http_client,
+        output: output_writer,
+    };
 
     match cli.command {
-        Some(command) => dispatch(command),
+        Some(command) => dispatch(&ctx, command),
         None => Err(Error::MissingCommand),
     }
 }
@@ -93,27 +132,43 @@ fn overrides_from_cli(cli: &Cli, log_level: Option<&str>) -> ConfigOverrides {
         host: cli.host.clone(),
         user_agent_suffix: cli.user_agent_suffix.clone(),
         output_format: cli.output.clone(),
+        output_color: if cli.color {
+            Some(true)
+        } else if cli.no_color {
+            Some(false)
+        } else {
+            None
+        },
+        output_paging: if cli.paging {
+            Some(true)
+        } else if cli.no_paging {
+            Some(false)
+        } else {
+            None
+        },
+        output_quiet: cli.quiet.then_some(true),
+        output_verbose: cli.verbose.then_some(true),
         ..ConfigOverrides::default()
     }
 }
 
-fn dispatch(command: Command) -> Result<()> {
+fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
     info!(?command, "dispatching command");
     match command {
-        Command::Account => crate::domains::account::handle("account"),
-        Command::Configure => crate::domains::account::handle("configure"),
-        Command::Copy => crate::domains::transfer::handle("copy"),
-        Command::Delete => crate::domains::transfer::handle("delete"),
-        Command::Download => crate::domains::transfer::handle("download"),
-        Command::Flag => crate::domains::account::handle("flag"),
-        Command::List => crate::domains::metadata::handle("list"),
-        Command::Metadata => crate::domains::metadata::handle("metadata"),
-        Command::Move => crate::domains::transfer::handle("move"),
-        Command::Reviews => crate::domains::account::handle("reviews"),
-        Command::Search => crate::domains::metadata::handle("search"),
-        Command::Simplelists => crate::domains::account::handle("simplelists"),
-        Command::Tasks => crate::domains::account::handle("tasks"),
-        Command::Upload => crate::domains::transfer::handle("upload"),
+        Command::Account => crate::domains::account::handle(ctx, "account"),
+        Command::Configure => crate::domains::account::handle(ctx, "configure"),
+        Command::Copy => crate::domains::transfer::handle(ctx, "copy"),
+        Command::Delete => crate::domains::transfer::handle(ctx, "delete"),
+        Command::Download => crate::domains::transfer::handle(ctx, "download"),
+        Command::Flag => crate::domains::account::handle(ctx, "flag"),
+        Command::List => crate::domains::metadata::handle(ctx, "list"),
+        Command::Metadata => crate::domains::metadata::handle(ctx, "metadata"),
+        Command::Move => crate::domains::transfer::handle(ctx, "move"),
+        Command::Reviews => crate::domains::account::handle(ctx, "reviews"),
+        Command::Search => crate::domains::metadata::handle(ctx, "search"),
+        Command::Simplelists => crate::domains::account::handle(ctx, "simplelists"),
+        Command::Tasks => crate::domains::account::handle(ctx, "tasks"),
+        Command::Upload => crate::domains::transfer::handle(ctx, "upload"),
     }
 }
 
@@ -131,5 +186,12 @@ mod tests {
     fn parses_config_file_flag() {
         let cli = Cli::parse_from(["ria", "-c", "ria.toml", "list"]);
         assert_eq!(cli.config_file.as_deref().unwrap().to_str(), Some("ria.toml"));
+    }
+
+    #[test]
+    fn parses_output_toggles() {
+        let cli = Cli::parse_from(["ria", "--no-color", "--paging", "list"]);
+        assert!(cli.no_color);
+        assert!(cli.paging);
     }
 }

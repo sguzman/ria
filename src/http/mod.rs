@@ -2,6 +2,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use reqwest::blocking::{Client, ClientBuilder, Response};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use reqwest::Certificate;
 use tracing::{debug, info, instrument, warn};
 
@@ -115,6 +116,8 @@ pub fn config_from_settings(settings: &Config) -> HttpClientConfig {
     let network = settings.network.as_ref();
     let endpoints = settings.endpoints.as_ref();
     let tls = settings.tls.as_ref();
+    let auth = settings.auth.as_ref();
+    let compat = settings.compatibility.as_ref();
 
     let api_base = endpoints
         .and_then(|config| config.api_base.clone())
@@ -139,7 +142,7 @@ pub fn config_from_settings(settings: &Config) -> HttpClientConfig {
         .and_then(|config| config.retry_backoff_ms)
         .unwrap_or(DEFAULT_RETRY_BACKOFF_MS);
 
-    let user_agent = build_user_agent(general);
+    let user_agent = build_user_agent(general, auth, compat);
 
     HttpClientConfig {
         api_base,
@@ -160,16 +163,17 @@ pub fn config_from_settings(settings: &Config) -> HttpClientConfig {
     }
 }
 
-fn build_user_agent(general: Option<&crate::config::GeneralConfig>) -> Option<String> {
+fn build_user_agent(
+    general: Option<&crate::config::GeneralConfig>,
+    auth: Option<&crate::config::AuthConfig>,
+    compat: Option<&crate::config::CompatibilityConfig>,
+) -> Option<String> {
     let general = general?;
     if general.user_agent_opt_out.unwrap_or(false) {
         return None;
     }
 
-    let base = general.user_agent_base.clone().unwrap_or_else(|| {
-        let version = env!("CARGO_PKG_VERSION");
-        format!("ria/{version} ({} {})", std::env::consts::OS, std::env::consts::ARCH)
-    });
+    let base = general.user_agent_base.clone().unwrap_or_else(|| default_user_agent(auth, compat));
 
     if let Some(suffix) = general.user_agent_suffix.as_deref() {
         Some(format!("{base} {suffix}"))
@@ -178,8 +182,34 @@ fn build_user_agent(general: Option<&crate::config::GeneralConfig>) -> Option<St
     }
 }
 
+fn default_user_agent(
+    auth: Option<&crate::config::AuthConfig>,
+    compat: Option<&crate::config::CompatibilityConfig>,
+) -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let lang = std::env::var("LANG")
+        .ok()
+        .and_then(|value| value.split('.').next().map(str::to_string))
+        .unwrap_or_else(|| "C".to_string());
+    let access_key = auth
+        .and_then(|config| config.access_key.as_deref())
+        .unwrap_or("anonymous");
+
+    if compat.and_then(|config| config.python_user_agent) == Some(true) {
+        format!(
+            "ria/{version} ({os} {arch}; N; {lang}; {access_key})"
+        )
+    } else {
+        format!("ria/{version} ({os} {arch})")
+    }
+}
+
 fn build_client(config: &HttpClientConfig) -> Result<Client> {
     let mut builder = ClientBuilder::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
 
     if let Some(timeout) = config.timeout {
         builder = builder.timeout(timeout);
@@ -188,8 +218,11 @@ fn build_client(config: &HttpClientConfig) -> Result<Client> {
         builder = builder.connect_timeout(timeout);
     }
     if let Some(user_agent) = &config.user_agent {
-        builder = builder.user_agent(user_agent.clone());
+        if let Ok(header) = HeaderValue::from_str(user_agent) {
+            headers.insert(reqwest::header::USER_AGENT, header);
+        }
     }
+    builder = builder.default_headers(headers);
 
     let accept_invalid = config.insecure || !config.tls_verify;
     if accept_invalid {

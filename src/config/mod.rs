@@ -1,4 +1,5 @@
 use directories::ProjectDirs;
+use globset::Glob;
 use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,8 @@ pub struct Config {
     pub tls: Option<TlsConfig>,
     pub endpoints: Option<EndpointsConfig>,
     pub auth: Option<AuthConfig>,
+    pub file_transfer: Option<FileTransferConfig>,
+    pub compatibility: Option<CompatibilityConfig>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -84,6 +87,20 @@ pub struct AuthConfig {
     pub secret_key: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct FileTransferConfig {
+    pub chunk_size_bytes: Option<u64>,
+    pub checksum_verify: Option<bool>,
+    pub resume: Option<bool>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct CompatibilityConfig {
+    pub python_user_agent: Option<bool>,
+    pub legacy_metadata_format: Option<bool>,
+    pub legacy_logging: Option<bool>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ConfigOverrides {
     pub logging_level: Option<String>,
@@ -115,6 +132,12 @@ pub struct ConfigOverrides {
     pub input_glob: Option<String>,
     pub input_validate_identifiers: Option<bool>,
     pub input_read_stdin: Option<bool>,
+    pub transfer_chunk_size_bytes: Option<u64>,
+    pub transfer_checksum_verify: Option<bool>,
+    pub transfer_resume: Option<bool>,
+    pub compat_python_user_agent: Option<bool>,
+    pub compat_legacy_metadata_format: Option<bool>,
+    pub compat_legacy_logging: Option<bool>,
 }
 
 pub fn resolve_config_path(cli_path: Option<PathBuf>) -> Option<PathBuf> {
@@ -193,11 +216,21 @@ pub fn overrides_from_env() -> ConfigOverrides {
         input_glob: env::var("RIA_INPUT_GLOB").ok(),
         input_validate_identifiers: parse_bool_env("RIA_VALIDATE_IDENTIFIERS"),
         input_read_stdin: parse_bool_env("RIA_READ_STDIN"),
+        transfer_chunk_size_bytes: parse_u64_env("RIA_TRANSFER_CHUNK_SIZE_BYTES"),
+        transfer_checksum_verify: parse_bool_env("RIA_TRANSFER_CHECKSUM_VERIFY"),
+        transfer_resume: parse_bool_env("RIA_TRANSFER_RESUME"),
+        compat_python_user_agent: parse_bool_env("RIA_COMPAT_PYTHON_USER_AGENT"),
+        compat_legacy_metadata_format: parse_bool_env("RIA_COMPAT_LEGACY_METADATA_FORMAT"),
+        compat_legacy_logging: parse_bool_env("RIA_COMPAT_LEGACY_LOGGING"),
     }
 }
 
 fn parse_bool_env(key: &str) -> Option<bool> {
     env::var(key).ok().and_then(|value| parse_bool(&value))
+}
+
+fn parse_u64_env(key: &str) -> Option<u64> {
+    env::var(key).ok().and_then(|value| value.trim().parse().ok())
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -303,6 +336,26 @@ impl Config {
         if let Some(input_read_stdin) = overrides.input_read_stdin {
             self.input_mut().read_stdin = Some(input_read_stdin);
         }
+
+        if let Some(chunk_size_bytes) = overrides.transfer_chunk_size_bytes {
+            self.file_transfer_mut().chunk_size_bytes = Some(chunk_size_bytes);
+        }
+        if let Some(checksum_verify) = overrides.transfer_checksum_verify {
+            self.file_transfer_mut().checksum_verify = Some(checksum_verify);
+        }
+        if let Some(resume) = overrides.transfer_resume {
+            self.file_transfer_mut().resume = Some(resume);
+        }
+
+        if let Some(python_user_agent) = overrides.compat_python_user_agent {
+            self.compatibility_mut().python_user_agent = Some(python_user_agent);
+        }
+        if let Some(legacy_metadata_format) = overrides.compat_legacy_metadata_format {
+            self.compatibility_mut().legacy_metadata_format = Some(legacy_metadata_format);
+        }
+        if let Some(legacy_logging) = overrides.compat_legacy_logging {
+            self.compatibility_mut().legacy_logging = Some(legacy_logging);
+        }
     }
 
     fn logging_mut(&mut self) -> &mut LoggingConfig {
@@ -331,6 +384,15 @@ impl Config {
 
     fn auth_mut(&mut self) -> &mut AuthConfig {
         self.auth.get_or_insert_with(AuthConfig::default)
+    }
+
+    fn file_transfer_mut(&mut self) -> &mut FileTransferConfig {
+        self.file_transfer.get_or_insert_with(FileTransferConfig::default)
+    }
+
+    fn compatibility_mut(&mut self) -> &mut CompatibilityConfig {
+        self.compatibility
+            .get_or_insert_with(CompatibilityConfig::default)
     }
 }
 
@@ -377,6 +439,11 @@ pub fn validate(config: &Config) -> Result<()> {
                 return Err(Error::message(format!("unknown output format: {format}")));
             }
         }
+        if output.quiet == Some(true) && output.verbose == Some(true) {
+            return Err(Error::message(
+                "output.quiet and output.verbose cannot both be true",
+            ));
+        }
     }
 
     if let Some(logging) = &config.logging {
@@ -410,6 +477,23 @@ pub fn validate(config: &Config) -> Result<()> {
         if let Some(path) = tls.ca_bundle.as_deref() {
             if !Path::new(path).exists() {
                 return Err(Error::message(format!("tls.ca_bundle not found: {path}")));
+            }
+        }
+    }
+
+    if let Some(input) = &config.input {
+        if let Some(pattern) = input.glob.as_deref() {
+            Glob::new(pattern)
+                .map_err(|err| Error::message(format!("invalid input.glob: {err}")))?;
+        }
+    }
+
+    if let Some(transfer) = &config.file_transfer {
+        if let Some(chunk_size) = transfer.chunk_size_bytes {
+            if chunk_size == 0 {
+                return Err(Error::message(
+                    "file_transfer.chunk_size_bytes must be greater than zero",
+                ));
             }
         }
     }
@@ -503,5 +587,19 @@ mod tests {
                 .and_then(|output| output.format.as_deref()),
             Some("json")
         );
+    }
+
+    #[test]
+    fn rejects_quiet_and_verbose() {
+        let config = Config {
+            output: Some(OutputConfig {
+                quiet: Some(true),
+                verbose: Some(true),
+                ..OutputConfig::default()
+            }),
+            ..Config::default()
+        };
+        let result = validate(&config);
+        assert!(result.is_err());
     }
 }

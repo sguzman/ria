@@ -27,5 +27,28 @@
 - [x] Document every field with examples and defaults.
 - [x] Add config validation with actionable error messages.
 - [x] Create a sample `ria.toml` for end users.
-- [ ] Add file transfer policies: chunk size, checksum verification, resume behavior.
-- [ ] Add compatibility policies: Python parity toggles and legacy behavior switches.
+- [x] Add file transfer policy for chunk size bytes.
+- [x] Add file transfer policy for checksum verification.
+- [x] Add file transfer policy for resume behavior.
+- [x] Add compatibility policy for python user-agent layout.
+- [x] Add compatibility policy for legacy metadata formatting.
+- [x] Add compatibility policy for legacy logging.
+- [x] Add env overrides for logging settings and toggles.
+- [x] Add env overrides for output policies.
+- [x] Add env overrides for TLS settings.
+- [x] Add env overrides for endpoint overrides.
+- [x] Add env overrides for auth keys.
+- [x] Add env overrides for input policies.
+- [x] Add env overrides for file transfer policies.
+- [x] Add env overrides for compatibility policies.
+- [x] Add env overrides for user-agent settings.
+- [x] Add config validation for output quiet/verbose conflicts.
+- [x] Add config validation for input glob syntax.
+- [x] Add config validation for file transfer chunk size.
+- [x] Add output defaults derived from terminal detection.
+- [x] Add stdin policy to read piped input when enabled.
+- [x] Add logging policy support for json output.
+- [x] Add logging policy support for stdout/stderr selection.
+- [x] Add telemetry enablement wiring from config.
+- [x] Add user-agent compatibility layout with access key and locale.
+- [x] Document env overrides and sample config sections.

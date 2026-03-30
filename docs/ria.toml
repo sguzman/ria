@@ -48,3 +48,13 @@ read_stdin = true
 [auth]
 access_key = "YOUR_ACCESS_KEY"
 secret_key = "YOUR_SECRET_KEY"
+
+[file_transfer]
+chunk_size_bytes = 8388608
+checksum_verify = true
+resume = true
+
+[compatibility]
+python_user_agent = false
+legacy_metadata_format = false
+legacy_logging = false

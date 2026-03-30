@@ -1,5 +1,5 @@
 use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -48,6 +48,30 @@ impl OutputPolicy {
             quiet: false,
             verbose: false,
         }
+    }
+}
+
+pub fn policy_from_config(config: &crate::config::Config) -> OutputPolicy {
+    let output = config.output.as_ref();
+    let format = output
+        .and_then(|cfg| cfg.format.as_deref())
+        .and_then(OutputFormat::parse)
+        .unwrap_or(OutputFormat::Human);
+    let paging = output.and_then(|cfg| cfg.paging).unwrap_or_else(|| {
+        io::stdout().is_terminal()
+    });
+    let color = output.and_then(|cfg| cfg.color).unwrap_or_else(|| {
+        io::stdout().is_terminal()
+    });
+    let quiet = output.and_then(|cfg| cfg.quiet).unwrap_or(false);
+    let verbose = output.and_then(|cfg| cfg.verbose).unwrap_or(false);
+
+    OutputPolicy {
+        format,
+        paging,
+        color,
+        quiet,
+        verbose,
     }
 }
 
@@ -100,5 +124,12 @@ mod tests {
         let writer = OutputWriter::new(policy);
         let result = writer.write_line("ignored");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn policy_from_config_defaults() {
+        let config = crate::config::Config::default();
+        let policy = super::policy_from_config(&config);
+        assert_eq!(policy.format, OutputFormat::Human);
     }
 }

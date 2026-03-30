@@ -4,5 +4,6 @@ pub mod domains;
 pub mod errors;
 pub mod http;
 pub mod output;
+pub mod signals;
 pub mod telemetry;
 pub mod utils;

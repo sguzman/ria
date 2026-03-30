@@ -10,4 +10,6 @@
 - [x] Add `--help` and subcommand help text aligned with Python docs.
 - [x] Add command dispatch scaffolding with not-implemented errors.
 - [x] Add `--output` flag and validate output format.
+- [x] Add output tuning flags (`--color`, `--paging`, `--quiet`, `--verbose`).
+- [x] Wire HTTP client and output policy into shared app context.
 - [x] Add minimal smoke tests for CLI parsing and config merging.

@@ -1,4 +1,5 @@
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use std::io::{self, IsTerminal, Read};
 
 use crate::errors::{Error, Result};
 
@@ -35,6 +36,17 @@ pub fn validate_identifier(value: &str) -> bool {
     })
 }
 
+pub fn stdin_is_terminal() -> bool {
+    io::stdin().is_terminal()
+}
+
+pub fn read_stdin() -> Result<String> {
+    let mut buffer = String::new();
+    let mut stdin = io::stdin();
+    stdin.read_to_string(&mut buffer)?;
+    Ok(buffer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +67,10 @@ mod tests {
         assert!(matcher.is_match("song.mp3"));
         assert!(matcher.is_match("data/test.json"));
         assert!(!matcher.is_match("image.png"));
+    }
+
+    #[test]
+    fn stdin_terminal_check() {
+        let _ = stdin_is_terminal();
     }
 }

@@ -42,3 +42,9 @@ Environment variables override values from the config file. CLI flags override b
 - `RIA_INPUT_GLOB`: Default glob pattern
 - `RIA_VALIDATE_IDENTIFIERS`: `true` or `false`
 - `RIA_READ_STDIN`: `true` or `false`
+- `RIA_TRANSFER_CHUNK_SIZE_BYTES`: Upload chunk size in bytes
+- `RIA_TRANSFER_CHECKSUM_VERIFY`: `true` or `false`
+- `RIA_TRANSFER_RESUME`: `true` or `false`
+- `RIA_COMPAT_PYTHON_USER_AGENT`: `true` or `false`
+- `RIA_COMPAT_LEGACY_METADATA_FORMAT`: `true` or `false`
+- `RIA_COMPAT_LEGACY_LOGGING`: `true` or `false`
