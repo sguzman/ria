@@ -1,10 +1,39 @@
 # Roadmap: File Transfer + Management
 
+- [x] Define transfer CLI argument structs for download/upload/delete/copy/move.
+- [x] Wire CLI dispatch to transfer handlers with structured args.
+- [x] Add download plan struct to capture identifier, dest, and file list.
+- [x] Fetch item metadata JSON for transfer workflows.
+- [x] Parse metadata file list and optional size values.
+- [x] Validate identifiers when `input.validate_identifiers` is enabled.
+- [x] Resolve glob pattern from CLI or config defaults.
+- [x] Implement glob matching for file selection.
+- [x] Support explicit filename selection for downloads.
+- [x] Merge explicit + glob selections with de-duplication.
+- [x] Error when explicit selection references missing files.
+- [x] Error when selection yields no files.
+- [x] Validate download paths to block absolute paths and `..` traversal.
+- [x] Build S3 download URLs from base + identifier + file path segments.
+- [x] Sort planned download files deterministically.
+- [x] Emit human-readable download plan output.
+- [x] Emit JSON download plan output.
+- [x] Include dry-run indicator in plan output.
+- [x] Create destination directory before download.
+- [x] Create parent directories for nested file paths.
+- [x] Download file bytes via HTTP client with status checks.
+- [x] Write downloaded bytes to destination files.
+- [x] Add tracing instrumentation for download planning and execution.
+- [x] Add per-file tracing fields (file, URL, destination).
+- [x] Add tests for metadata file parsing.
+- [x] Add tests for glob selection.
+- [x] Add tests for explicit selection.
+- [x] Add tests for missing explicit file errors.
+- [x] Add tests for empty selection errors.
+- [x] Add tests for download path validation and URL building.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
-- [ ] Implement `ia download` (file selection, output dir, resume/retry).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).
 - [ ] Implement `ia move` (copy + delete semantics and safety checks).
-- [ ] Implement rate limiting and retry/backoff strategies.
-- [ ] Add `tracing` spans for per-file progress and retries.
-- [ ] Add tests for path validation and selection rules.
+- [ ] Implement resume support and checksum verification for downloads.
+- [ ] Implement progress reporting (per-file + aggregate).
+- [ ] Add transfer retry policy tied to config settings.

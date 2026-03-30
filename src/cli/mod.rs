@@ -1,7 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use tracing::info;
 
 use crate::config::{self, ConfigOverrides};
@@ -55,9 +55,9 @@ pub struct Cli {
 pub enum Command {
     Account,
     Configure,
-    Copy,
-    Delete,
-    Download,
+    Copy(CopyArgs),
+    Delete(DeleteArgs),
+    Download(DownloadArgs),
     Flag,
     List {
         identifier: String,
@@ -65,7 +65,7 @@ pub enum Command {
     Metadata {
         identifier: String,
     },
-    Move,
+    Move(MoveArgs),
     Reviews,
     Search {
         query: String,
@@ -76,7 +76,66 @@ pub enum Command {
     },
     Simplelists,
     Tasks,
-    Upload,
+    Upload(UploadArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct DownloadArgs {
+    pub identifier: String,
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+    #[arg(long = "glob")]
+    pub glob: Option<String>,
+    #[arg(long = "dest", value_name = "DIR", default_value = ".")]
+    pub dest: PathBuf,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UploadArgs {
+    pub identifier: String,
+    #[arg(value_name = "PATH")]
+    pub paths: Vec<PathBuf>,
+    #[arg(long = "metadata", value_name = "FILE")]
+    pub metadata: Option<PathBuf>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DeleteArgs {
+    pub identifier: String,
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+    #[arg(long = "glob")]
+    pub glob: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CopyArgs {
+    pub source_identifier: String,
+    pub dest_identifier: String,
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+    #[arg(long = "glob")]
+    pub glob: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    pub source_identifier: String,
+    pub dest_identifier: String,
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+    #[arg(long = "glob")]
+    pub glob: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 pub struct AppContext {
@@ -167,13 +226,13 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
     match command {
         Command::Account => crate::domains::account::handle(ctx, "account"),
         Command::Configure => crate::domains::account::handle(ctx, "configure"),
-        Command::Copy => crate::domains::transfer::handle(ctx, "copy"),
-        Command::Delete => crate::domains::transfer::handle(ctx, "delete"),
-        Command::Download => crate::domains::transfer::handle(ctx, "download"),
+        Command::Copy(args) => crate::domains::transfer::copy(ctx, &args),
+        Command::Delete(args) => crate::domains::transfer::delete(ctx, &args),
+        Command::Download(args) => crate::domains::transfer::download(ctx, &args),
         Command::Flag => crate::domains::account::handle(ctx, "flag"),
         Command::List { identifier } => crate::domains::metadata::list(ctx, &identifier),
         Command::Metadata { identifier } => crate::domains::metadata::metadata(ctx, &identifier),
-        Command::Move => crate::domains::transfer::handle(ctx, "move"),
+        Command::Move(args) => crate::domains::transfer::move_item(ctx, &args),
         Command::Reviews => crate::domains::account::handle(ctx, "reviews"),
         Command::Search { query, rows, page } => crate::domains::metadata::search(
             ctx,
@@ -181,7 +240,7 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
         ),
         Command::Simplelists => crate::domains::account::handle(ctx, "simplelists"),
         Command::Tasks => crate::domains::account::handle(ctx, "tasks"),
-        Command::Upload => crate::domains::transfer::handle(ctx, "upload"),
+        Command::Upload(args) => crate::domains::transfer::upload(ctx, &args),
     }
 }
 
@@ -191,7 +250,7 @@ mod tests {
 
     #[test]
     fn parses_output_flag() {
-        let cli = Cli::parse_from(["ria", "--output", "json", "upload"]);
+        let cli = Cli::parse_from(["ria", "--output", "json", "upload", "sample-item"]);
         assert_eq!(cli.output.as_deref(), Some("json"));
     }
 

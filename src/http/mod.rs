@@ -82,8 +82,29 @@ impl HttpClient {
             .map_err(|err| Error::message(format!("failed to parse JSON: {err}")))
     }
 
+    pub fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let response = self.get(url)?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&body)
+            )));
+        }
+        Ok(bytes.to_vec())
+    }
+
     pub fn api_base(&self) -> &str {
         &self.config.api_base
+    }
+
+    pub fn s3_base(&self) -> &str {
+        &self.config.s3_base
     }
 
     pub fn metadata_base(&self) -> &str {
