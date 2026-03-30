@@ -142,6 +142,8 @@ pub struct AppContext {
     pub config: crate::config::Config,
     pub http: http::HttpClient,
     pub output: OutputWriter,
+    pub config_path: Option<PathBuf>,
+    pub config_destination: Option<PathBuf>,
 }
 
 pub fn run() -> Result<()> {
@@ -156,6 +158,7 @@ pub fn run() -> Result<()> {
 
     let env_path = env::var_os("RIA_CONFIG").map(PathBuf::from);
     let config_path = config::resolve_config_path(cli.config_file.clone());
+    let config_destination = config::resolve_config_destination(cli.config_file.clone());
     let mut config = config::load(config_path.as_deref())?;
 
     let search_paths = config::config_search_paths(cli.config_file.as_deref(), env_path.as_deref());
@@ -186,6 +189,8 @@ pub fn run() -> Result<()> {
         config,
         http: http_client,
         output: output_writer,
+        config_path,
+        config_destination,
     };
 
     match cli.command {
@@ -224,22 +229,22 @@ fn overrides_from_cli(cli: &Cli, log_level: Option<&str>) -> ConfigOverrides {
 fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
     info!(?command, "dispatching command");
     match command {
-        Command::Account => crate::domains::account::handle(ctx, "account"),
-        Command::Configure => crate::domains::account::handle(ctx, "configure"),
+        Command::Account => crate::domains::account::account(ctx),
+        Command::Configure => crate::domains::account::configure(ctx),
         Command::Copy(args) => crate::domains::transfer::copy(ctx, &args),
         Command::Delete(args) => crate::domains::transfer::delete(ctx, &args),
         Command::Download(args) => crate::domains::transfer::download(ctx, &args),
-        Command::Flag => crate::domains::account::handle(ctx, "flag"),
+        Command::Flag => crate::domains::account::flag(ctx),
         Command::List { identifier } => crate::domains::metadata::list(ctx, &identifier),
         Command::Metadata { identifier } => crate::domains::metadata::metadata(ctx, &identifier),
         Command::Move(args) => crate::domains::transfer::move_item(ctx, &args),
-        Command::Reviews => crate::domains::account::handle(ctx, "reviews"),
+        Command::Reviews => crate::domains::account::reviews(ctx),
         Command::Search { query, rows, page } => crate::domains::metadata::search(
             ctx,
             &crate::domains::metadata::SearchQuery { query, rows, page },
         ),
-        Command::Simplelists => crate::domains::account::handle(ctx, "simplelists"),
-        Command::Tasks => crate::domains::account::handle(ctx, "tasks"),
+        Command::Simplelists => crate::domains::account::simplelists(ctx),
+        Command::Tasks => crate::domains::account::tasks(ctx),
         Command::Upload(args) => crate::domains::transfer::upload(ctx, &args),
     }
 }

@@ -1,12 +1,12 @@
 use directories::ProjectDirs;
 use globset::Glob;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::errors::{Error, Result};
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub logging: Option<LoggingConfig>,
     pub general: Option<GeneralConfig>,
@@ -20,7 +20,7 @@ pub struct Config {
     pub compatibility: Option<CompatibilityConfig>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct LoggingConfig {
     pub enabled: Option<bool>,
     pub level: Option<String>,
@@ -33,7 +33,7 @@ pub struct LoggingConfig {
     pub thread_names: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct GeneralConfig {
     pub insecure: Option<bool>,
     pub host: Option<String>,
@@ -42,7 +42,7 @@ pub struct GeneralConfig {
     pub user_agent_opt_out: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct NetworkConfig {
     pub timeout_secs: Option<u64>,
     pub connect_timeout_secs: Option<u64>,
@@ -52,7 +52,7 @@ pub struct NetworkConfig {
     pub concurrency: Option<u32>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct OutputConfig {
     pub format: Option<String>,
     pub paging: Option<bool>,
@@ -61,40 +61,40 @@ pub struct OutputConfig {
     pub verbose: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct InputConfig {
     pub glob: Option<String>,
     pub validate_identifiers: Option<bool>,
     pub read_stdin: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct TlsConfig {
     pub verify: Option<bool>,
     pub ca_bundle: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct EndpointsConfig {
     pub api_base: Option<String>,
     pub s3_base: Option<String>,
     pub metadata_base: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct FileTransferConfig {
     pub chunk_size_bytes: Option<u64>,
     pub checksum_verify: Option<bool>,
     pub resume: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompatibilityConfig {
     pub python_user_agent: Option<bool>,
     pub legacy_metadata_format: Option<bool>,
@@ -152,6 +152,18 @@ pub fn resolve_config_path(cli_path: Option<PathBuf>) -> Option<PathBuf> {
     default_config_path().filter(|path| path.exists())
 }
 
+pub fn resolve_config_destination(cli_path: Option<PathBuf>) -> Option<PathBuf> {
+    if cli_path.is_some() {
+        return cli_path;
+    }
+
+    if let Some(path) = env::var_os("RIA_CONFIG").map(PathBuf::from) {
+        return Some(path);
+    }
+
+    default_config_path()
+}
+
 pub fn load(config_path: Option<&Path>) -> Result<Config> {
     if let Some(path) = config_path {
         return load_from_path(path);
@@ -164,6 +176,16 @@ pub fn load_from_path(path: &Path) -> Result<Config> {
     let contents = std::fs::read_to_string(path)?;
     let config = toml::from_str(&contents)?;
     Ok(config)
+}
+
+pub fn save_to_path(config: &Config, path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let contents = toml::to_string_pretty(config)
+        .map_err(|err| Error::message(format!("failed to serialize config: {err}")))?;
+    std::fs::write(path, contents)?;
+    Ok(())
 }
 
 pub fn default_config_path() -> Option<PathBuf> {
@@ -544,6 +566,36 @@ mod tests {
                 .and_then(|logging| logging.level.as_deref()),
             Some("info")
         );
+    }
+
+    #[test]
+    fn saves_and_loads_config() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("ria.toml");
+        let config = Config {
+            auth: Some(AuthConfig {
+                access_key: Some("access".to_string()),
+                secret_key: Some("secret".to_string()),
+            }),
+            ..Config::default()
+        };
+        save_to_path(&config, &path).expect("save");
+        let loaded = load_from_path(&path).expect("load");
+        assert_eq!(
+            loaded
+                .auth
+                .as_ref()
+                .and_then(|auth| auth.access_key.as_deref()),
+            Some("access")
+        );
+    }
+
+    #[test]
+    fn resolves_config_destination_without_existing_file() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("ria.toml");
+        let resolved = resolve_config_destination(Some(path.clone()));
+        assert_eq!(resolved.as_deref(), Some(path.as_path()));
     }
 
     #[test]

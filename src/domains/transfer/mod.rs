@@ -857,6 +857,8 @@ mod tests {
             config,
             http,
             output,
+            config_path: None,
+            config_destination: None,
         }
     }
 

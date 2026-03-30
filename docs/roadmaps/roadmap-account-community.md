@@ -1,7 +1,35 @@
 # Roadmap: Account + Community Operations
 
-- [ ] Implement `ia configure` (prompt/write config, validate credentials).
-- [ ] Implement `ia account` (account info, quota/status views).
+- [x] Add config serialization support for writing updates.
+- [x] Add config save helper to write TOML output.
+- [x] Add resolve helper for config destination path (even if missing).
+- [x] Implement `ia configure` prompt for access key input.
+- [x] Implement `ia configure` prompt for secret key input.
+- [x] Validate configured access key is non-empty.
+- [x] Validate configured secret key is non-empty.
+- [x] Persist updated auth config to disk on configure.
+- [x] Ensure parent config directory is created when missing.
+- [x] Emit configure success output with destination path.
+- [x] Add tracing span for configure flow.
+- [x] Implement `ia account` status output for configured credentials.
+- [x] Emit access key in account status output.
+- [x] Hide secret key value in account status output.
+- [x] Error when account status is requested without credentials.
+- [x] Add tracing span for account status.
+- [x] Preserve unmodified config fields during configure.
+- [x] Add not-implemented stubs for `ia reviews`.
+- [x] Add not-implemented stubs for `ia flag`.
+- [x] Add not-implemented stubs for `ia simplelists`.
+- [x] Add not-implemented stubs for `ia tasks`.
+- [x] Add tracing spans for unimplemented account commands.
+- [x] Add tests for config save + reload round-trip.
+- [x] Add tests for config destination resolution with explicit path.
+- [x] Wire CLI dispatch for account/configure to new handlers.
+- [x] Wire CLI dispatch for community commands to explicit stubs.
+- [x] Use structured error when configure destination cannot be resolved.
+- [x] Use structured error when reading prompt input fails.
+- [x] Use structured error for empty credentials.
+- [x] Keep auth configuration stored in TOML `auth` section.
 - [ ] Implement `ia reviews` (list, submit, delete reviews).
 - [ ] Implement `ia flag` (add/remove/list flags on items).
 - [ ] Implement `ia simplelists` (create/list/add/remove items).

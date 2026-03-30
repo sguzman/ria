@@ -170,6 +170,8 @@ mod tests {
             output: crate::output::OutputWriter::new(crate::output::OutputPolicy::new(
                 OutputFormat::Human,
             )),
+            config_path: None,
+            config_destination: None,
         };
         let url = search_url(&ctx, &query).expect("search url");
         assert!(url.contains("advancedsearch.php"));
@@ -218,6 +220,8 @@ mod tests {
             output: crate::output::OutputWriter::new(crate::output::OutputPolicy::new(
                 OutputFormat::Human,
             )),
+            config_path: None,
+            config_destination: None,
         };
 
         let result = list(&ctx, "test-item");
@@ -251,6 +255,8 @@ mod tests {
             output: crate::output::OutputWriter::new(crate::output::OutputPolicy::new(
                 OutputFormat::Human,
             )),
+            config_path: None,
+            config_destination: None,
         };
 
         let result = list(&ctx, "bad-item");
