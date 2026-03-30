@@ -208,6 +208,36 @@
 - [x] Add helper for LOW auth header reuse across operations.
 - [x] Update delete plan to persist cascade flag.
 - [x] Add delete operation summary logs per file.
+- [x] Implement copy execution via download + upload pipeline.
+- [x] Implement move execution via copy + delete pipeline.
+- [x] Use LOW auth header for copy execution.
+- [x] Use LOW auth header for move execution.
+- [x] Reuse upload headers for copy execution.
+- [x] Reuse upload headers for move execution.
+- [x] Reuse delete headers for move cleanup.
+- [x] Verify checksums before copy when enabled.
+- [x] Verify checksums before move when enabled.
+- [x] Add copy progress tracker for verbose output.
+- [x] Add move progress tracker for verbose output.
+- [x] Emit per-file copy progress in verbose mode.
+- [x] Emit per-file move progress in verbose mode.
+- [x] Add helper for copy/move progress formatting.
+- [x] Add transfer summary for copy/move completion.
+- [x] Add tests for copy progress formatting.
+- [x] Use source item metadata for copy selection.
+- [x] Use source item metadata for move selection.
+- [x] Use S3 URLs for copy source reads.
+- [x] Use S3 URLs for move source reads.
+- [x] Use S3 URLs for copy destination writes.
+- [x] Use S3 URLs for move destination writes.
+- [x] Surface copy failures as structured errors.
+- [x] Surface move failures as structured errors.
+- [x] Add tracing fields for copy execution.
+- [x] Add tracing fields for move execution.
+- [x] Reuse checksum helpers in copy/move flows.
+- [x] Add helper to compute checksums for in-memory copy.
+- [x] Gate checksum verification on config policy for copy.
+- [x] Gate checksum verification on config policy for move.
 - [ ] Implement `ia upload` (file selection, metadata sidecar, checksum handling).
 - [ ] Implement `ia delete` (delete by filename/glob, dry-run).
 - [ ] Implement `ia copy` (server-side copy with metadata updates).

@@ -119,30 +119,24 @@ pub fn delete(ctx: &AppContext, _args: &DeleteArgs) -> Result<()> {
 
 #[instrument(skip(ctx))]
 pub fn copy(ctx: &AppContext, _args: &CopyArgs) -> Result<()> {
+    let policy = TransferPolicy::from_config(ctx);
     let plan = plan_copy(ctx, _args)?;
     emit_copy_plan(ctx, &plan, _args.dry_run)?;
     if _args.dry_run {
         return Ok(());
     }
-    warn!("copy not implemented");
-    let _ = ctx
-        .output
-        .write_error("ria: copy not implemented (use --dry-run to preview)");
-    Err(Error::not_implemented("copy"))
+    execute_copy(ctx, &plan, policy)
 }
 
 #[instrument(skip(ctx))]
 pub fn move_item(ctx: &AppContext, _args: &MoveArgs) -> Result<()> {
+    let policy = TransferPolicy::from_config(ctx);
     let plan = plan_move(ctx, _args)?;
     emit_move_plan(ctx, &plan, _args.dry_run)?;
     if _args.dry_run {
         return Ok(());
     }
-    warn!("move not implemented");
-    let _ = ctx
-        .output
-        .write_error("ria: move not implemented (use --dry-run to preview)");
-    Err(Error::not_implemented("move"))
+    execute_move(ctx, &plan, policy)
 }
 
 #[instrument(skip(ctx, args))]
@@ -964,6 +958,10 @@ fn equals_ignore_case(left: &str, right: &str) -> bool {
     left.eq_ignore_ascii_case(right)
 }
 
+fn compute_hashes(bytes: &[u8]) -> (String, String) {
+    (md5_hex(bytes), sha1_hex(bytes))
+}
+
 fn compute_hashes_from_path(path: &Path) -> Result<(String, String)> {
     let mut file = fs::File::open(path).map_err(|err| {
         Error::message(format!("failed to read {}: {err}", path.display()))
@@ -1141,6 +1139,127 @@ impl UploadProgress {
         }
         line
     }
+}
+
+fn execute_copy(ctx: &AppContext, plan: &CopyPlan, policy: TransferPolicy) -> Result<()> {
+    let auth = build_low_auth_header(&ctx.config)?;
+    let mut progress = CopyProgress::new(plan.files.len());
+    for file in &plan.files {
+        let source_url = build_file_url(ctx.http.s3_base(), &plan.source_identifier, &file.name)?;
+        let dest_url = build_file_url(ctx.http.s3_base(), &plan.dest_identifier, &file.name)?;
+        info!(
+            file = %file.name,
+            source = %source_url,
+            dest = %dest_url,
+            "copying file"
+        );
+        let bytes = ctx.http.get_bytes(&source_url)?;
+        if policy.checksum_verify {
+            verify_checksums(
+                &file.name,
+                &bytes,
+                file.md5.as_deref(),
+                file.sha1.as_deref(),
+            )?;
+        }
+        let (md5, sha1) = compute_hashes(&bytes);
+        let headers = build_upload_headers(&md5, &sha1, policy, &auth)?;
+        ctx.http
+            .put_bytes(&dest_url, &bytes, &headers)
+            .map_err(|err| Error::message(format!("copy failed for {}: {err}", file.name)))?;
+
+        progress.on_complete();
+        if ctx.output.policy().verbose {
+            let line = progress.format_line(&file.name);
+            let _ = ctx.output.write_line(&line);
+        }
+    }
+    emit_transfer_summary(ctx, "Copied", plan.files.len())?;
+    Ok(())
+}
+
+fn execute_move(ctx: &AppContext, plan: &MovePlan, policy: TransferPolicy) -> Result<()> {
+    let auth = build_low_auth_header(&ctx.config)?;
+    let mut progress = CopyProgress::new(plan.files.len());
+    for file in &plan.files {
+        let source_url = build_file_url(ctx.http.s3_base(), &plan.source_identifier, &file.name)?;
+        let dest_url = build_file_url(ctx.http.s3_base(), &plan.dest_identifier, &file.name)?;
+        info!(
+            file = %file.name,
+            source = %source_url,
+            dest = %dest_url,
+            "moving file"
+        );
+        let bytes = ctx.http.get_bytes(&source_url)?;
+        if policy.checksum_verify {
+            verify_checksums(
+                &file.name,
+                &bytes,
+                file.md5.as_deref(),
+                file.sha1.as_deref(),
+            )?;
+        }
+        let (md5, sha1) = compute_hashes(&bytes);
+        let headers = build_upload_headers(&md5, &sha1, policy, &auth)?;
+        ctx.http
+            .put_bytes(&dest_url, &bytes, &headers)
+            .map_err(|err| Error::message(format!("move upload failed for {}: {err}", file.name)))?;
+        let delete_headers = build_delete_headers(&auth, false);
+        ctx.http
+            .delete(&source_url, &delete_headers)
+            .map_err(|err| Error::message(format!("move delete failed for {}: {err}", file.name)))?;
+
+        progress.on_complete();
+        if ctx.output.policy().verbose {
+            let line = progress.format_line(&file.name);
+            let _ = ctx.output.write_line(&line);
+        }
+    }
+    emit_transfer_summary(ctx, "Moved", plan.files.len())?;
+    Ok(())
+}
+
+#[derive(Debug)]
+struct CopyProgress {
+    total_files: usize,
+    completed_files: usize,
+}
+
+impl CopyProgress {
+    fn new(total_files: usize) -> Self {
+        Self {
+            total_files,
+            completed_files: 0,
+        }
+    }
+
+    fn on_complete(&mut self) {
+        self.completed_files += 1;
+    }
+
+    fn format_line(&self, name: &str) -> String {
+        format!(
+            "Transferred {name} (files: {}/{})",
+            self.completed_files, self.total_files
+        )
+    }
+}
+
+fn emit_transfer_summary(ctx: &AppContext, label: &str, files: usize) -> Result<()> {
+    if ctx.output.policy().format == OutputFormat::Json {
+        let value = json!({
+            "action": label.to_lowercase(),
+            "files": files,
+        });
+        ctx.output
+            .write_json(&value)
+            .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+    } else {
+        ctx.output
+            .write_line(&format!("{label} {files} files"))
+            .map_err(|err| Error::message(format!("failed to write output: {err}")))?;
+    }
+    Ok(())
 }
 
 fn validate_identifier(ctx: &AppContext, identifier: &str) -> Result<()> {
@@ -1603,5 +1722,13 @@ mod tests {
         assert!(headers
             .iter()
             .any(|(key, value)| key == "x-archive-cascade-delete" && value == "1"));
+    }
+
+    #[test]
+    fn copy_progress_formats_line() {
+        let mut progress = CopyProgress::new(2);
+        progress.on_complete();
+        let line = progress.format_line("file.txt");
+        assert!(line.contains("files: 1/2"));
     }
 }
