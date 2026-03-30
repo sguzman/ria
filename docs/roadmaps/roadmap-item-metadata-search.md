@@ -1,10 +1,36 @@
 # Roadmap: Item Discovery + Metadata
 
-- [ ] Implement `ia list` (list files for an item, format output like Python).
-- [ ] Implement `ia metadata` (get/set/patch metadata, upload metadata files).
-- [ ] Implement `ia search` (query syntax, pagination, output formats).
-- [ ] Support output modes: human-readable, JSON, and raw (parity with Python flags).
-- [ ] Add robust input validation for identifiers and query strings.
-- [ ] Add `tracing` spans for request lifecycle and response parsing.
-- [ ] Add unit tests for query building and metadata merge behavior.
-- [ ] Add integration tests against mocked HTTP API responses.
+- [x] Add CLI args for `ia list` identifier input.
+- [x] Add CLI args for `ia metadata` identifier input.
+- [x] Add CLI args for `ia search` query input.
+- [x] Add CLI args for `ia search` rows and page options.
+- [x] Default `ia search` rows/page parameters.
+- [x] Implement metadata GET handler for `ia metadata`.
+- [x] Implement file listing handler for `ia list`.
+- [x] Implement search handler for `ia search`.
+- [x] Build metadata URL helper.
+- [x] Build search URL helper with encoded query parameters.
+- [x] Validate identifiers for list/metadata.
+- [x] Validate search query is non-empty.
+- [x] Parse file list from metadata JSON.
+- [x] Parse identifiers from search response JSON.
+- [x] Support output modes for `ia list` (human/json/raw).
+- [x] Support output modes for `ia metadata` (human/json/raw).
+- [x] Support output modes for `ia search` (human/json/raw).
+- [x] Add JSON pretty output writer.
+- [x] Add raw output pass-through mode.
+- [x] Add tracing spans for list/metadata/search execution.
+- [x] Add tracing span for metadata fetch.
+- [x] Add HTTP client helper for text responses.
+- [x] Add HTTP client helper for JSON responses.
+- [x] Add HTTP error mapping for non-2xx responses.
+- [x] Expose output policy to handlers.
+- [x] Add unit test for search URL building.
+- [x] Add unit test for file list parsing.
+- [x] Add integration test for metadata list success (mock server).
+- [x] Add integration test for metadata error status (mock server).
+- [x] Add CLI test for search argument parsing.
+- [ ] Implement metadata set/patch operations.
+- [ ] Support metadata file upload.
+- [ ] Implement search pagination beyond single page.
+- [ ] Add unit tests for metadata merge behavior.

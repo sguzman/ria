@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use reqwest::blocking::{Client, ClientBuilder, Response};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use reqwest::Certificate;
+use serde_json::Value;
 use tracing::{debug, info, instrument, warn};
 
 use crate::config::Config;
@@ -57,6 +58,36 @@ impl HttpClient {
         let _permit = self.concurrency.acquire();
         self.rate_limiter.throttle();
         self.send_with_retry(|| self.client.get(url).send(), url)
+    }
+
+    pub fn get_text(&self, url: &str) -> Result<String> {
+        let response = self.get(url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
+    pub fn get_json(&self, url: &str) -> Result<Value> {
+        let text = self.get_text(url)?;
+        serde_json::from_str(&text)
+            .map_err(|err| Error::message(format!("failed to parse JSON: {err}")))
+    }
+
+    pub fn api_base(&self) -> &str {
+        &self.config.api_base
+    }
+
+    pub fn metadata_base(&self) -> &str {
+        &self.config.metadata_base
     }
 
     fn send_with_retry<F>(&self, mut send: F, url: &str) -> Result<Response>
@@ -255,6 +286,15 @@ fn build_client(config: &HttpClientConfig) -> Result<Client> {
 
 fn should_retry_status(status: u16) -> bool {
     status == 429 || (500..=599).contains(&status)
+}
+
+fn truncate_body(body: &str) -> String {
+    const LIMIT: usize = 240;
+    if body.len() <= LIMIT {
+        body.to_string()
+    } else {
+        format!("{}...", &body[..LIMIT])
+    }
 }
 
 #[derive(Debug)]

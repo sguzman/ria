@@ -1,5 +1,6 @@
 use std::fmt;
 use std::io::{self, IsTerminal, Write};
+use serde_json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -95,6 +96,21 @@ impl OutputWriter {
     pub fn write_error(&self, line: &str) -> io::Result<()> {
         let mut stderr = io::stderr();
         writeln!(stderr, "{line}")
+    }
+
+    pub fn write_json(&self, value: &serde_json::Value) -> io::Result<()> {
+        if self.policy.quiet {
+            return Ok(());
+        }
+        let mut stdout = io::stdout();
+        serde_json::to_writer_pretty(&mut stdout, value)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        writeln!(stdout)?;
+        Ok(())
+    }
+
+    pub fn policy(&self) -> &OutputPolicy {
+        &self.policy
     }
 }
 

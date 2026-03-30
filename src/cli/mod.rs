@@ -59,11 +59,21 @@ pub enum Command {
     Delete,
     Download,
     Flag,
-    List,
-    Metadata,
+    List {
+        identifier: String,
+    },
+    Metadata {
+        identifier: String,
+    },
     Move,
     Reviews,
-    Search,
+    Search {
+        query: String,
+        #[arg(long = "rows", default_value_t = 50)]
+        rows: u32,
+        #[arg(long = "page", default_value_t = 1)]
+        page: u32,
+    },
     Simplelists,
     Tasks,
     Upload,
@@ -161,11 +171,14 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
         Command::Delete => crate::domains::transfer::handle(ctx, "delete"),
         Command::Download => crate::domains::transfer::handle(ctx, "download"),
         Command::Flag => crate::domains::account::handle(ctx, "flag"),
-        Command::List => crate::domains::metadata::handle(ctx, "list"),
-        Command::Metadata => crate::domains::metadata::handle(ctx, "metadata"),
+        Command::List { identifier } => crate::domains::metadata::list(ctx, &identifier),
+        Command::Metadata { identifier } => crate::domains::metadata::metadata(ctx, &identifier),
         Command::Move => crate::domains::transfer::handle(ctx, "move"),
         Command::Reviews => crate::domains::account::handle(ctx, "reviews"),
-        Command::Search => crate::domains::metadata::handle(ctx, "search"),
+        Command::Search { query, rows, page } => crate::domains::metadata::search(
+            ctx,
+            &crate::domains::metadata::SearchQuery { query, rows, page },
+        ),
         Command::Simplelists => crate::domains::account::handle(ctx, "simplelists"),
         Command::Tasks => crate::domains::account::handle(ctx, "tasks"),
         Command::Upload => crate::domains::transfer::handle(ctx, "upload"),
@@ -184,14 +197,35 @@ mod tests {
 
     #[test]
     fn parses_config_file_flag() {
-        let cli = Cli::parse_from(["ria", "-c", "ria.toml", "list"]);
+        let cli = Cli::parse_from(["ria", "-c", "ria.toml", "list", "example-item"]);
         assert_eq!(cli.config_file.as_deref().unwrap().to_str(), Some("ria.toml"));
     }
 
     #[test]
     fn parses_output_toggles() {
-        let cli = Cli::parse_from(["ria", "--no-color", "--paging", "list"]);
+        let cli = Cli::parse_from(["ria", "--no-color", "--paging", "list", "example-item"]);
         assert!(cli.no_color);
         assert!(cli.paging);
+    }
+
+    #[test]
+    fn parses_search_args() {
+        let cli = Cli::parse_from([
+            "ria",
+            "search",
+            "collection:test",
+            "--rows",
+            "10",
+            "--page",
+            "2",
+        ]);
+        match cli.command.expect("command") {
+            super::Command::Search { query, rows, page } => {
+                assert_eq!(query, "collection:test");
+                assert_eq!(rows, 10);
+                assert_eq!(page, 2);
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 }

@@ -9,6 +9,6 @@
 - [x] Implement retry/backoff, rate limiting, and concurrency controls.
 - [ ] Add resumable downloads/uploads with checksum verification.
 - [ ] Build golden CLI tests for argument parsing and output formatting.
-- [ ] Add API mock fixtures and integration tests for error cases.
+- [x] Add API mock fixtures and integration tests for error cases.
 - [x] Write parity notes and CLI behavior compatibility docs.
 - [x] Add default HTTP request headers (Accept/User-Agent).
