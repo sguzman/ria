@@ -254,15 +254,72 @@ fn build_metadata_patch(
     };
     let mut patch = Vec::new();
     for (key, value) in updates {
+        let (op, merged_value) = merge_metadata_value(metadata_obj.get(key), value)?;
         let path = format!("/{target}/{key}");
-        let op = if metadata_obj.contains_key(key) { "replace" } else { "add" };
         patch.push(serde_json::json!({
             "op": op,
             "path": path,
-            "value": value,
+            "value": merged_value,
         }));
     }
     Ok(Value::Array(patch))
+}
+
+fn merge_metadata_value(
+    current: Option<&Value>,
+    update: &Value,
+) -> Result<(&'static str, Value)> {
+    match current {
+        None => Ok(("add", update.clone())),
+        Some(existing) => {
+            let merged = match (existing, update) {
+                (Value::Array(existing), Value::Array(update)) => {
+                    let mut out = existing.clone();
+                    out.extend(update.clone());
+                    Value::Array(dedupe_values(out))
+                }
+                (Value::Array(existing), Value::String(value)) => {
+                    let mut out = existing.clone();
+                    out.push(Value::String(value.clone()));
+                    Value::Array(dedupe_values(out))
+                }
+                (Value::String(existing), Value::Array(update)) => {
+                    let mut out = vec![Value::String(existing.clone())];
+                    out.extend(update.clone());
+                    Value::Array(dedupe_values(out))
+                }
+                (Value::String(existing), Value::String(update)) => {
+                    if existing == update {
+                        Value::String(existing.clone())
+                    } else {
+                        Value::Array(vec![
+                            Value::String(existing.clone()),
+                            Value::String(update.clone()),
+                        ])
+                    }
+                }
+                (Value::Object(existing), Value::Object(update)) => {
+                    let mut out = existing.clone();
+                    for (key, value) in update {
+                        out.insert(key.clone(), value.clone());
+                    }
+                    Value::Object(out)
+                }
+                (_, _) => update.clone(),
+            };
+            Ok(("replace", merged))
+        }
+    }
+}
+
+fn dedupe_values(values: Vec<Value>) -> Vec<Value> {
+    let mut output = Vec::new();
+    for value in values {
+        if !output.iter().any(|existing| existing == &value) {
+            output.push(value);
+        }
+    }
+    output
 }
 
 fn build_metadata_form(
@@ -568,6 +625,27 @@ mod tests {
         let updates = vec![("title".to_string(), Value::String("New".into()))];
         let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
         assert!(patch.as_array().unwrap()[0]["op"] == "replace");
+    }
+
+    #[test]
+    fn merges_metadata_lists_with_dedupe() {
+        let current = serde_json::json!({ "metadata": { "subject": ["one", "two"] } });
+        let updates = vec![("subject".to_string(), Value::Array(vec![
+            Value::String("two".into()),
+            Value::String("three".into()),
+        ]))];
+        let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
+        let values = patch.as_array().unwrap()[0]["value"].as_array().unwrap();
+        assert_eq!(values.len(), 3);
+    }
+
+    #[test]
+    fn merges_metadata_strings_into_list() {
+        let current = serde_json::json!({ "metadata": { "collection": "foo" } });
+        let updates = vec![("collection".to_string(), Value::String("bar".into()))];
+        let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
+        let values = patch.as_array().unwrap()[0]["value"].as_array().unwrap();
+        assert_eq!(values.len(), 2);
     }
 
     #[test]

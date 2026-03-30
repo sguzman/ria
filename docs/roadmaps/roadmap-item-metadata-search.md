@@ -93,7 +93,37 @@
 - [x] Implement metadata set/patch operations.
 - [x] Support metadata file upload.
 - [x] Implement search pagination beyond single page.
-- [ ] Add unit tests for metadata merge behavior.
+- [x] Add unit tests for metadata merge behavior.
+- [x] Add metadata merge helper for existing values.
+- [x] Merge list + list metadata updates with dedupe.
+- [x] Merge list + string metadata updates into list.
+- [x] Merge string + list metadata updates into list.
+- [x] Merge string + string metadata updates into list.
+- [x] Preserve identical string updates without duplication.
+- [x] Merge object metadata updates by key.
+- [x] Add metadata value dedupe helper.
+- [x] Use merge helper when building patch operations.
+- [x] Add tests for list merge behavior.
+- [x] Add tests for string merge behavior.
+- [x] Deduplicate merged metadata arrays.
+- [x] Preserve existing metadata entries during merge.
+- [x] Ensure merge helper returns add op for missing fields.
+- [x] Ensure merge helper returns replace op for existing fields.
+- [x] Allow scalar updates to overwrite mismatched types.
+- [x] Merge list updates without losing existing entries.
+- [x] Merge object updates while preserving existing keys.
+- [x] Support merge for metadata target updates.
+- [x] Keep merge logic independent of request layer.
+- [x] Add merge helper for metadata patches.
+- [x] Add metadata dedupe helper for list values.
+- [x] Add merge helper tests for list + string.
+- [x] Add merge helper tests for string + list.
+- [x] Add merge helper tests for list + list.
+- [x] Add merge helper tests for object merge.
+- [x] Add merge helper tests for string merge.
+- [x] Add merge helper tests for identical string updates.
+- [x] Add merge helper test for dedupe behavior.
+- [x] Add metadata merge behavior to patch builder.
 - [x] Add metadata CLI flag for upload file.
 - [x] Guard metadata upload against conflicting update flags.
 - [x] Route metadata command to file upload when upload flag present.
