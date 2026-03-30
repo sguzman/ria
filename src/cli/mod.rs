@@ -58,13 +58,13 @@ pub enum Command {
     Copy(CopyArgs),
     Delete(DeleteArgs),
     Download(DownloadArgs),
-    Flag,
+    Flag(FlagArgs),
     List {
         identifier: String,
     },
     Metadata(MetadataArgs),
     Move(MoveArgs),
-    Reviews,
+    Reviews(ReviewsArgs),
     Search {
         query: String,
         #[arg(long = "rows", default_value_t = 50)]
@@ -74,8 +74,8 @@ pub enum Command {
         #[arg(long = "pages", default_value_t = 1)]
         pages: u32,
     },
-    Simplelists,
-    Tasks,
+    Simplelists(SimplelistsArgs),
+    Tasks(TasksArgs),
     Upload(UploadArgs),
 }
 
@@ -163,6 +163,68 @@ pub struct MetadataArgs {
     pub priority: Option<i32>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ReviewsArgs {
+    pub identifier: String,
+    #[arg(long = "list")]
+    pub list: bool,
+    #[arg(long = "title")]
+    pub title: Option<String>,
+    #[arg(long = "body")]
+    pub body: Option<String>,
+    #[arg(long = "stars")]
+    pub stars: Option<u8>,
+    #[arg(long = "delete")]
+    pub delete: bool,
+    #[arg(long = "username")]
+    pub username: Option<String>,
+    #[arg(long = "screenname")]
+    pub screenname: Option<String>,
+    #[arg(long = "itemname")]
+    pub itemname: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct FlagArgs {
+    pub identifier: String,
+    #[arg(long = "list")]
+    pub list: bool,
+    #[arg(long = "add")]
+    pub add: Option<String>,
+    #[arg(long = "remove")]
+    pub remove: Option<String>,
+    #[arg(long = "user")]
+    pub user: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SimplelistsArgs {
+    pub identifier: Option<String>,
+    #[arg(long = "list-parents")]
+    pub list_parents: bool,
+    #[arg(long = "list-children")]
+    pub list_children: bool,
+    #[arg(long = "list-name")]
+    pub list_name: Option<String>,
+    #[arg(long = "set-parent")]
+    pub set_parent: Option<String>,
+    #[arg(long = "remove-parent")]
+    pub remove_parent: Option<String>,
+    #[arg(long = "notes")]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct TasksArgs {
+    pub identifier: Option<String>,
+    #[arg(long = "summary")]
+    pub summary: bool,
+    #[arg(long = "history")]
+    pub history: Option<bool>,
+    #[arg(long = "catalog")]
+    pub catalog: Option<bool>,
 }
 
 pub struct AppContext {
@@ -261,11 +323,11 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
         Command::Copy(args) => crate::domains::transfer::copy(ctx, &args),
         Command::Delete(args) => crate::domains::transfer::delete(ctx, &args),
         Command::Download(args) => crate::domains::transfer::download(ctx, &args),
-        Command::Flag => crate::domains::account::flag(ctx),
+        Command::Flag(args) => crate::domains::account::flag(ctx, &args),
         Command::List { identifier } => crate::domains::metadata::list(ctx, &identifier),
         Command::Metadata(args) => crate::domains::metadata::metadata(ctx, &args),
         Command::Move(args) => crate::domains::transfer::move_item(ctx, &args),
-        Command::Reviews => crate::domains::account::reviews(ctx),
+        Command::Reviews(args) => crate::domains::account::reviews(ctx, &args),
         Command::Search {
             query,
             rows,
@@ -276,8 +338,8 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
             &crate::domains::metadata::SearchQuery { query, rows, page },
             pages,
         ),
-        Command::Simplelists => crate::domains::account::simplelists(ctx),
-        Command::Tasks => crate::domains::account::tasks(ctx),
+        Command::Simplelists(args) => crate::domains::account::simplelists(ctx, &args),
+        Command::Tasks(args) => crate::domains::account::tasks(ctx, &args),
         Command::Upload(args) => crate::domains::transfer::upload(ctx, &args),
     }
 }
@@ -374,6 +436,30 @@ mod tests {
                     Some("metadata.json")
                 );
                 assert!(args.dry_run);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn parses_reviews_submit_args() {
+        let cli = Cli::parse_from([
+            "ria",
+            "reviews",
+            "example-item",
+            "--title",
+            "Great",
+            "--body",
+            "Nice archive",
+            "--stars",
+            "5",
+        ]);
+        match cli.command.expect("command") {
+            super::Command::Reviews(args) => {
+                assert_eq!(args.identifier, "example-item");
+                assert_eq!(args.title.as_deref(), Some("Great"));
+                assert_eq!(args.body.as_deref(), Some("Nice archive"));
+                assert_eq!(args.stars, Some(5));
             }
             _ => panic!("unexpected command"),
         }

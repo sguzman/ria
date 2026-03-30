@@ -149,7 +149,7 @@ impl HttpClient {
             request = request.header(key, header_value);
         }
 
-        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), &url)?;
         let status = response.status();
         if !status.is_success() {
             let text = response
@@ -176,7 +176,7 @@ impl HttpClient {
             request = request.header(key, header_value);
         }
 
-        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), &url)?;
         let status = response.status();
         if status.as_u16() != 404 && !status.is_success() {
             return Err(Error::message(format!(
@@ -217,6 +217,146 @@ impl HttpClient {
             request = request.header(key, header_value);
         }
 
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), &url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
+    #[instrument(skip(self, params, headers))]
+    pub fn get_with_params(
+        &self,
+        url: &str,
+        params: &[(String, String)],
+        headers: &[(String, String)],
+    ) -> Result<String> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let url = url_with_params(url, params)?;
+        let mut request = self.client.get(&url);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), &url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
+    #[instrument(skip(self, params, json, headers))]
+    pub fn post_json(
+        &self,
+        url: &str,
+        params: &[(String, String)],
+        json: &serde_json::Value,
+        headers: &[(String, String)],
+    ) -> Result<String> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let url = url_with_params(url, params)?;
+        let mut request = self.client.post(&url).json(json);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), &url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
+    #[instrument(skip(self, params, form, headers))]
+    pub fn put_form(
+        &self,
+        url: &str,
+        params: &[(String, String)],
+        form: &[(String, String)],
+        headers: &[(String, String)],
+    ) -> Result<String> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let encoded = form_urlencode(form);
+        let mut request = self
+            .client
+            .put(&url_with_params(url, params)?)
+            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(encoded);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
+
+        let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
+        let status = response.status();
+        let text = response
+            .text()
+            .map_err(|err| Error::message(format!("failed to read response body: {err}")))?;
+        if !status.is_success() {
+            return Err(Error::message(format!(
+                "request failed with status {}: {}",
+                status.as_u16(),
+                truncate_body(&text)
+            )));
+        }
+        Ok(text)
+    }
+
+    #[instrument(skip(self, params, form, headers))]
+    pub fn delete_form(
+        &self,
+        url: &str,
+        params: &[(String, String)],
+        form: &[(String, String)],
+        headers: &[(String, String)],
+    ) -> Result<String> {
+        let _permit = self.concurrency.acquire();
+        self.rate_limiter.throttle();
+
+        let encoded = form_urlencode(form);
+        let mut request = self
+            .client
+            .delete(&url_with_params(url, params)?)
+            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(encoded);
+        for (key, value) in headers {
+            let header_value = HeaderValue::from_str(value)
+                .map_err(|err| Error::message(format!("invalid header {key}: {err}")))?;
+            request = request.header(key, header_value);
+        }
         let response = self.send_with_retry(|| request.try_clone().unwrap().send(), url)?;
         let status = response.status();
         let text = response
@@ -302,6 +442,21 @@ fn form_urlencode(form: &[(String, String)]) -> String {
         serializer.append_pair(key, value);
     }
     serializer.finish()
+}
+
+fn url_with_params(url: &str, params: &[(String, String)]) -> Result<String> {
+    if params.is_empty() {
+        return Ok(url.to_string());
+    }
+    let mut parsed = url::Url::parse(url)
+        .map_err(|err| Error::message(format!("invalid url: {err}")))?;
+    {
+        let mut pairs = parsed.query_pairs_mut();
+        for (key, value) in params {
+            pairs.append_pair(key, value);
+        }
+    }
+    Ok(parsed.to_string())
 }
 
 pub fn config_from_settings(settings: &Config) -> HttpClientConfig {

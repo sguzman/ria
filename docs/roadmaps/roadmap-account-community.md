@@ -30,9 +30,34 @@
 - [x] Use structured error when reading prompt input fails.
 - [x] Use structured error for empty credentials.
 - [x] Keep auth configuration stored in TOML `auth` section.
-- [ ] Implement `ia reviews` (list, submit, delete reviews).
-- [ ] Implement `ia flag` (add/remove/list flags on items).
-- [ ] Implement `ia simplelists` (create/list/add/remove items).
-- [ ] Implement `ia tasks` (query task status and submit catalog tasks).
-- [ ] Add `tracing` spans for authentication and API calls.
-- [ ] Add tests for auth config parsing and request shaping.
+- [x] Implement `ia reviews` (list, submit, delete reviews).
+- [x] Implement `ia flag` (add/remove/list flags on items).
+- [x] Implement `ia simplelists` (create/list/add/remove items).
+- [x] Implement `ia tasks` (query task status and submit catalog tasks).
+- [x] Add `tracing` spans for authentication and API calls.
+- [x] Add tests for auth config parsing and request shaping.
+- [x] Add reviews CLI args for list/submit/delete flows.
+- [x] Add review submission fields (title/body/stars).
+- [x] Add review deletion filters (username/screenname/itemname).
+- [x] Add reviews HTTP GET with auth headers.
+- [x] Add reviews HTTP POST with JSON payload.
+- [x] Add reviews HTTP DELETE with form payload.
+- [x] Add flags CLI args for list/add/remove.
+- [x] Add flags HTTP GET with Accept header.
+- [x] Add flags HTTP PUT for add operation.
+- [x] Add flags HTTP DELETE for remove operation.
+- [x] Add simplelists CLI args for list/set/remove.
+- [x] Add simplelists list-parents handler.
+- [x] Add simplelists list-children handler using search query.
+- [x] Add simplelists patch submit handler.
+- [x] Add tasks CLI args for summary/history/catalog.
+- [x] Add tasks HTTP GET with auth headers.
+- [x] Add tasks query parameter handling.
+- [x] Add shared LOW auth header helper for account operations.
+- [x] Add helper to split LOW auth header into keys.
+- [x] Add account helper to output JSON/raw responses.
+- [x] Add tests for LOW auth header parsing.
+- [x] Add HTTP helpers for get/post/put/delete with params.
+- [x] Add form-encoded HTTP helpers for PUT/DELETE.
+- [x] Add JSON POST helper for reviews submission.
+- [x] Add simplelists patch payload builder.
