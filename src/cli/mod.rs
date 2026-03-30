@@ -155,6 +155,8 @@ pub struct MetadataArgs {
     pub set: Vec<String>,
     #[arg(long = "metadata-file", value_name = "FILE")]
     pub metadata_file: Option<PathBuf>,
+    #[arg(long = "upload-file", value_name = "FILE")]
+    pub upload_file: Option<PathBuf>,
     #[arg(long = "target", default_value = "metadata")]
     pub target: String,
     #[arg(long = "priority")]
@@ -348,6 +350,29 @@ mod tests {
                 assert_eq!(args.identifier, "example-item");
                 assert_eq!(args.set, vec!["title=Example"]);
                 assert_eq!(args.target, "metadata");
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn parses_metadata_upload_file() {
+        let cli = Cli::parse_from([
+            "ria",
+            "metadata",
+            "example-item",
+            "--upload-file",
+            "metadata.json",
+            "--dry-run",
+        ]);
+        match cli.command.expect("command") {
+            super::Command::Metadata(args) => {
+                assert_eq!(args.identifier, "example-item");
+                assert_eq!(
+                    args.upload_file.as_deref().unwrap().to_str(),
+                    Some("metadata.json")
+                );
+                assert!(args.dry_run);
             }
             _ => panic!("unexpected command"),
         }

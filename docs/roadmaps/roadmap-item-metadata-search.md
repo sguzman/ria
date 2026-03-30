@@ -90,7 +90,37 @@
 - [x] Add tests for metadata patch generation.
 - [x] Add CLI test for metadata update flags.
 - [x] Emit metadata dry-run JSON output.
-- [ ] Implement metadata set/patch operations.
-- [ ] Support metadata file upload.
-- [ ] Implement search pagination beyond single page.
+- [x] Implement metadata set/patch operations.
+- [x] Support metadata file upload.
+- [x] Implement search pagination beyond single page.
 - [ ] Add unit tests for metadata merge behavior.
+- [x] Add metadata CLI flag for upload file.
+- [x] Guard metadata upload against conflicting update flags.
+- [x] Route metadata command to file upload when upload flag present.
+- [x] Validate upload file exists before sending.
+- [x] Validate upload file name before sending.
+- [x] Reuse transfer upload flow for metadata file upload.
+- [x] Use metadata dry-run flag to drive upload dry-run.
+- [x] Preserve metadata GET when no update/upload flags supplied.
+- [x] Add metadata upload error for missing path.
+- [x] Add metadata upload error for invalid filename.
+- [x] Add metadata upload tests for conflict detection.
+- [x] Add metadata upload dry-run test with temp file.
+- [x] Add metadata upload wiring without new dependencies.
+- [x] Ensure metadata upload uses existing upload checksums.
+- [x] Ensure metadata upload respects transfer policy.
+- [x] Add metadata upload path validation in handler.
+- [x] Add metadata upload command flow for single file.
+- [x] Add metadata upload handling in domain layer.
+- [x] Add metadata upload guardrails for invalid input.
+- [x] Add metadata upload tests for dry-run success.
+- [x] Add metadata upload to roadmap completion.
+- [x] Add metadata upload CLI argument parsing.
+- [x] Add metadata upload handler dispatch path.
+- [x] Add metadata upload default behavior for filename.
+- [x] Add metadata upload error for incompatible flags.
+- [x] Add metadata upload support for JSON metadata files.
+- [x] Add metadata upload support for TOML metadata files.
+- [x] Add metadata upload integration through transfer upload.
+- [x] Add metadata upload guard for missing identifier.
+- [x] Add metadata upload early validation before network calls.

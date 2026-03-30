@@ -26,6 +26,16 @@ pub fn list(ctx: &AppContext, identifier: &str) -> Result<()> {
 
 #[instrument(skip(ctx, args))]
 pub fn metadata(ctx: &AppContext, args: &MetadataArgs) -> Result<()> {
+    if args.upload_file.is_some()
+        && (!args.set.is_empty() || args.metadata_file.is_some())
+    {
+        return Err(Error::message(
+            "metadata updates and upload-file cannot be used together",
+        ));
+    }
+    if let Some(_) = args.upload_file {
+        return metadata_upload_file(ctx, args);
+    }
     if args.set.is_empty() && args.metadata_file.is_none() {
         return metadata_get(ctx, &args.identifier);
     }
@@ -113,6 +123,34 @@ fn metadata_update(ctx: &AppContext, args: &MetadataArgs) -> Result<()> {
     let json: Value = serde_json::from_str(&response)
         .map_err(|err| Error::message(format!("failed to parse metadata response: {err}")))?;
     output_value(ctx, &json, &response)
+}
+
+#[instrument(skip(ctx, args))]
+fn metadata_upload_file(ctx: &AppContext, args: &MetadataArgs) -> Result<()> {
+    validate_identifier(&args.identifier)?;
+    let path = args
+        .upload_file
+        .as_ref()
+        .ok_or_else(|| Error::message("upload file is required"))?;
+    if !path.exists() {
+        return Err(Error::message(format!(
+            "upload file does not exist: {}",
+            path.display()
+        )));
+    }
+    let _ = path.file_name().and_then(|name| name.to_str()).ok_or_else(|| {
+        Error::message(format!(
+            "invalid upload file name: {}",
+            path.display()
+        ))
+    })?;
+    let upload_args = crate::cli::UploadArgs {
+        identifier: args.identifier.clone(),
+        paths: vec![path.clone()],
+        metadata: None,
+        dry_run: args.dry_run,
+    };
+    crate::domains::transfer::upload(ctx, &upload_args)
 }
 
 fn validate_identifier(identifier: &str) -> Result<()> {
@@ -383,6 +421,22 @@ mod tests {
     use httpmock::MockServer;
     use tempfile::TempDir;
 
+    fn test_context() -> AppContext {
+        let config = crate::config::Config::default();
+        let http = crate::http::HttpClient::new(crate::http::config_from_settings(&config))
+            .expect("http client");
+        let output = crate::output::OutputWriter::new(crate::output::OutputPolicy::new(
+            OutputFormat::Human,
+        ));
+        AppContext {
+            config,
+            http,
+            output,
+            config_path: None,
+            config_destination: None,
+        }
+    }
+
     #[test]
     fn builds_search_url() {
         let query = SearchQuery {
@@ -514,5 +568,40 @@ mod tests {
         let updates = vec![("title".to_string(), Value::String("New".into()))];
         let patch = build_metadata_patch(&current, "metadata", &updates).expect("patch");
         assert!(patch.as_array().unwrap()[0]["op"] == "replace");
+    }
+
+    #[test]
+    fn metadata_upload_rejects_conflicts() {
+        let ctx = test_context();
+        let args = MetadataArgs {
+            identifier: "example-item".into(),
+            set: vec!["title=Example".into()],
+            metadata_file: None,
+            upload_file: Some(std::path::PathBuf::from("file.txt")),
+            target: "metadata".into(),
+            priority: None,
+            dry_run: true,
+        };
+        let err = metadata(&ctx, &args).unwrap_err();
+        assert!(err.to_string().contains("cannot be used together"));
+    }
+
+    #[test]
+    fn metadata_upload_dry_run_succeeds() {
+        let ctx = test_context();
+        let dir = TempDir::new().expect("temp");
+        let path = dir.path().join("metadata.json");
+        std::fs::write(&path, r#"{ "title": "Example" }"#).expect("write");
+        let args = MetadataArgs {
+            identifier: "example-item".into(),
+            set: Vec::new(),
+            metadata_file: None,
+            upload_file: Some(path),
+            target: "metadata".into(),
+            priority: None,
+            dry_run: true,
+        };
+        let result = metadata(&ctx, &args);
+        assert!(result.is_ok());
     }
 }
