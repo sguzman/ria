@@ -541,9 +541,13 @@ mod tests {
     #[test]
     fn resolves_env_path_first() {
         let temp = NamedTempFile::new().expect("tempfile");
-        env::set_var("RIA_CONFIG", temp.path());
+        unsafe {
+            env::set_var("RIA_CONFIG", temp.path());
+        }
         let resolved = resolve_config_path(None);
-        env::remove_var("RIA_CONFIG");
+        unsafe {
+            env::remove_var("RIA_CONFIG");
+        }
         assert_eq!(resolved.as_deref(), Some(temp.path()));
     }
 

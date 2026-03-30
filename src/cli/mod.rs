@@ -346,7 +346,7 @@ fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
     use super::Cli;
 
     #[test]

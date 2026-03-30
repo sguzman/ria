@@ -1932,7 +1932,6 @@ mod tests {
 
     #[test]
     fn filters_by_format() {
-        let ctx = test_context();
         let available = parse_metadata_files(&sample_metadata()).expect("files");
         let filtered = filter_by_format(available, &["JPEG".into()], &[], None).expect("filtered");
         assert_eq!(filtered.len(), 1);
@@ -1941,7 +1940,6 @@ mod tests {
 
     #[test]
     fn errors_on_format_mismatch_for_explicit_file() {
-        let ctx = test_context();
         let available = parse_metadata_files(&sample_metadata()).expect("files");
         let err = filter_by_format(
             available,
